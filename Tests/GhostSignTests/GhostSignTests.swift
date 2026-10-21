@@ -328,4 +328,30 @@ final class GhostSignTests: XCTestCase {
 
         try storage.clearAll()
     }
+
+    func testConstantsValuesAndFormatting() {
+        XCTAssertEqual(Constants.GrandSlam.service, "iCloud")
+        XCTAssertEqual(Constants.GrandSlam.authApp, "com.apple.gs.xcode.auth")
+        XCTAssertEqual(Constants.DeveloperServices.protocolVersion, "QH65B2")
+        XCTAssertEqual(Constants.DeveloperServices.clientID, "XABBG36SBA")
+
+        XCTAssertEqual(Constants.ResultCodes.success, 0)
+        XCTAssertEqual(Constants.ResultCodes.invalidCertificateRequest, 3250)
+        XCTAssertEqual(Constants.ResultCodes.deviceAlreadyRegistered, 35)
+        XCTAssertEqual(Constants.ResultCodes.maximumAppIDLimitReached, 37)
+        XCTAssertEqual(Constants.ResultCodes.maximumCertificatesReachedAlternate, 7460)
+        XCTAssertEqual(Constants.ResultCodes.profileNotFoundAlternate, 8201)
+        XCTAssertEqual(Constants.ResultCodes.profileNotFound, 9115)
+        XCTAssertEqual(Constants.ResultCodes.sessionExpired, -22406)
+
+        XCTAssertEqual(Constants.HTTPStatusCodes.ok, 200)
+        XCTAssertEqual(Constants.HTTPStatusCodes.unauthorized, 401)
+        XCTAssertEqual(Constants.HTTPStatusCodes.notFound, 404)
+        XCTAssertFalse(Constants.HTTPStatusCodes.localizedDescription(for: 401).isEmpty)
+        XCTAssertFalse(Constants.HTTPStatusCodes.localizedDescription(for: 500).isEmpty)
+
+        XCTAssertEqual(Constants.Storage.defaultBaseDirectoryName, "GhostSign")
+        XCTAssertEqual(Constants.Storage.identitiesDirectoryName, "Identities")
+        XCTAssertEqual(Constants.Storage.profilesDirectoryName, "Profiles")
+    }
 }

@@ -56,14 +56,14 @@ public final class FileStorageManager: @unchecked Sendable {
         } else {
             let docDirs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
             if let first = docDirs.first {
-                root = first.appendingPathComponent("GhostSign", isDirectory: true)
+                root = first.appendingPathComponent(Constants.Storage.defaultBaseDirectoryName, isDirectory: true)
             } else {
-                root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("GhostSign", isDirectory: true)
+                root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(Constants.Storage.defaultBaseDirectoryName, isDirectory: true)
             }
         }
         self.baseDirectory = root
-        self.identitiesDirectory = root.appendingPathComponent("Identities", isDirectory: true)
-        self.profilesDirectory = root.appendingPathComponent("Profiles", isDirectory: true)
+        self.identitiesDirectory = root.appendingPathComponent(Constants.Storage.identitiesDirectoryName, isDirectory: true)
+        self.profilesDirectory = root.appendingPathComponent(Constants.Storage.profilesDirectoryName, isDirectory: true)
 
         try? createDirectoriesIfNeeded()
     }

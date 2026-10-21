@@ -17,12 +17,12 @@ public final class DeveloperPortalClient: @unchecked Sendable {
     public let session: AuthSession
     public let urlSession: URLSession
 
-    private let baseURL = "https://developerservices2.apple.com/services/QH65B2"
-    private let clientID = "XABBG36SBA"
-    private let protocolVersion = "QH65B2"
-    private let xcodeVersion = "15.4 (15F31d)"
-    private let userAgent = "Xcode"
-    private let appInfo = "com.apple.gs.xcode.auth"
+    private let baseURL = Constants.DeveloperServices.defaultBaseURL
+    private let clientID = Constants.DeveloperServices.clientID
+    private let protocolVersion = Constants.DeveloperServices.protocolVersion
+    private let xcodeVersion = Constants.DeveloperServices.xcodeVersion
+    private let userAgent = Constants.DeveloperServices.userAgent
+    private let appInfo = Constants.DeveloperServices.appInfo
 
     public init(session: AuthSession, sessionConfiguration: URLSessionConfiguration = .default) {
         self.session = session
@@ -54,10 +54,10 @@ public final class DeveloperPortalClient: @unchecked Sendable {
         request.setValue("text/x-xml-plist", forHTTPHeaderField: "Accept")
         request.setValue("en-us", forHTTPHeaderField: "Accept-Language")
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
-        request.setValue(appInfo, forHTTPHeaderField: "X-Apple-App-Info")
-        request.setValue(xcodeVersion, forHTTPHeaderField: "X-Xcode-Version")
-        request.setValue(session.dsid, forHTTPHeaderField: "X-Apple-I-Identity-Id")
-        request.setValue(session.authToken, forHTTPHeaderField: "X-Apple-GS-Token")
+        request.setValue(appInfo, forHTTPHeaderField: Constants.AnisetteHeaders.appInfo)
+        request.setValue(xcodeVersion, forHTTPHeaderField: Constants.AnisetteHeaders.xcodeVersion)
+        request.setValue(session.dsid, forHTTPHeaderField: Constants.AnisetteHeaders.identityId)
+        request.setValue(session.authToken, forHTTPHeaderField: Constants.AnisetteHeaders.gsToken)
 
         // Attach Anisette device attestation headers
         for (header, value) in session.anisetteData.toHTTPHeaders() {
@@ -133,7 +133,7 @@ public final class DeveloperPortalClient: @unchecked Sendable {
     /// Retrieves developer teams associated with the authenticated Apple ID.
     public func listTeams() async throws -> [DeveloperTeam] {
         let response: ListTeamsResponse = try await performRequest(
-            action: "listTeams.action",
+            action: Constants.URLs.listTeams,
             context: "teams"
         )
         guard let teams = response.teams, !teams.isEmpty else {
@@ -145,7 +145,7 @@ public final class DeveloperPortalClient: @unchecked Sendable {
     /// Queries registered hardware test devices for a developer team.
     public func listDevices(teamId: String) async throws -> [DeveloperDevice] {
         let response: ListDevicesResponse = try await performRequest(
-            action: "ios/listDevices.action",
+            action: Constants.URLs.listDevices,
             teamId: teamId,
             context: "device"
         )
@@ -155,7 +155,7 @@ public final class DeveloperPortalClient: @unchecked Sendable {
     /// Registers a new hardware test device with the developer team.
     public func addDevice(name: String, udid: String, teamId: String) async throws -> DeveloperDevice {
         let response: DeviceResponse = try await performRequest(
-            action: "ios/addDevice.action",
+            action: Constants.URLs.addDevice,
             parameters: [
                 "name": name,
                 "deviceNumber": udid,
@@ -164,7 +164,7 @@ public final class DeveloperPortalClient: @unchecked Sendable {
             teamId: teamId,
             context: "device",
             customErrorMapper: { code, msg in
-                if code == 35 {
+                if code == Constants.ResultCodes.deviceAlreadyRegistered {
                     let lower = msg.lowercased()
                     if lower.contains("maximum") || lower.contains("limit") {
                         return .maximumDevicesReached
@@ -183,7 +183,7 @@ public final class DeveloperPortalClient: @unchecked Sendable {
     /// Queries registered App IDs (bundle identifiers) under the developer team.
     public func listAppIds(teamId: String) async throws -> [DeveloperAppId] {
         let response: ListAppIdsResponse = try await performRequest(
-            action: "ios/listAppIds.action",
+            action: Constants.URLs.listAppIDs,
             teamId: teamId,
             context: "appId"
         )
@@ -193,7 +193,7 @@ public final class DeveloperPortalClient: @unchecked Sendable {
     /// Registers a new App ID bundle identifier under the developer team.
     public func addAppId(name: String, identifier: String, teamId: String) async throws -> DeveloperAppId {
         let response: AppIdResponse = try await performRequest(
-            action: "ios/addAppId.action",
+            action: Constants.URLs.addAppID,
             parameters: [
                 "name": name,
                 "identifier": identifier
@@ -201,9 +201,9 @@ public final class DeveloperPortalClient: @unchecked Sendable {
             teamId: teamId,
             context: "appId",
             customErrorMapper: { code, _ in
-                if code == 35 {
+                if code == Constants.ResultCodes.bundleIdentifierUnavailable {
                     return .bundleIdentifierUnavailable
-                } else if code == 37 {
+                } else if code == Constants.ResultCodes.maximumAppIDLimitReached {
                     return .maximumAppIDLimitReached
                 }
                 return nil
@@ -218,7 +218,7 @@ public final class DeveloperPortalClient: @unchecked Sendable {
     /// Queries active development certificates for the developer team.
     public func listCertificates(teamId: String) async throws -> [DeveloperCertificate] {
         let response: ListCertificatesResponse = try await performRequest(
-            action: "ios/listAllDevelopmentCerts.action",
+            action: Constants.URLs.listCertificates,
             teamId: teamId,
             context: "certificate"
         )
@@ -228,7 +228,7 @@ public final class DeveloperPortalClient: @unchecked Sendable {
     /// Submits a PKCS#10 Certificate Signing Request (CSR) PEM and downloads the issued Apple Development Certificate.
     public func addCertificate(csrPEM: String, teamId: String) async throws -> DeveloperCertificate {
         let response: CertificateResponse = try await performRequest(
-            action: "ios/submitDevelopmentCSR.action",
+            action: Constants.URLs.submitDevelopmentCSR,
             parameters: [
                 "csrContent": csrPEM,
                 "machineName": "GhostSign",
@@ -237,9 +237,9 @@ public final class DeveloperPortalClient: @unchecked Sendable {
             teamId: teamId,
             context: "certificate",
             customErrorMapper: { code, _ in
-                if code == 3250 {
+                if code == Constants.ResultCodes.invalidCertificateRequest {
                     return .invalidCertificateRequest
-                } else if code == 35 || code == 7460 {
+                } else if code == Constants.ResultCodes.maximumCertificatesReached || code == Constants.ResultCodes.maximumCertificatesReachedAlternate {
                     return .maximumCertificatesReached
                 }
                 return nil
@@ -275,7 +275,7 @@ public final class DeveloperPortalClient: @unchecked Sendable {
     /// Queries all provisioning profiles registered under the developer team.
     public func listProvisioningProfiles(teamId: String) async throws -> [DeveloperProvisioningProfile] {
         let response: ListProvisioningProfilesResponse = try await performRequest(
-            action: "ios/listProvisioningProfiles.action",
+            action: Constants.URLs.listProvisioningProfiles,
             parameters: ["includeTeamProfiles": true],
             teamId: teamId,
             context: "profile"
@@ -321,7 +321,7 @@ public final class DeveloperPortalClient: @unchecked Sendable {
         }
 
         let response: ProvisioningProfileResponse = try await performRequest(
-            action: "ios/createProvisioningProfile.action",
+            action: Constants.URLs.createProvisioningProfile,
             parameters: params,
             teamId: teamId,
             context: "profile"
@@ -343,12 +343,12 @@ public final class DeveloperPortalClient: @unchecked Sendable {
         }
 
         let response: ProvisioningProfileResponse = try await performRequest(
-            action: "ios/downloadTeamProvisioningProfile.action",
+            action: Constants.URLs.downloadTeamProfile,
             parameters: ["appIdId": resolvedAppIdId],
             teamId: teamId,
             context: "profile",
             customErrorMapper: { code, _ in
-                if code == 8201 || code == 9115 {
+                if code == Constants.ResultCodes.profileNotFoundAlternate || code == Constants.ResultCodes.profileNotFound {
                     return .profileNotFound
                 }
                 return nil
@@ -364,7 +364,7 @@ public final class DeveloperPortalClient: @unchecked Sendable {
     @discardableResult
     public func deleteAppId(appIdId: String, teamId: String) async throws -> Bool {
         let _: DeveloperPortalStatusResponse = try await performRequest(
-            action: "ios/deleteAppId.action",
+            action: Constants.URLs.deleteAppID,
             parameters: ["appIdId": appIdId],
             teamId: teamId,
             context: "appId"
@@ -376,7 +376,7 @@ public final class DeveloperPortalClient: @unchecked Sendable {
     @discardableResult
     public func deleteDevice(deviceId: String, teamId: String) async throws -> Bool {
         let _: DeveloperPortalStatusResponse = try await performRequest(
-            action: "ios/deleteDevice.action",
+            action: Constants.URLs.deleteDevice,
             parameters: ["deviceId": deviceId],
             teamId: teamId,
             context: "device"
@@ -387,7 +387,7 @@ public final class DeveloperPortalClient: @unchecked Sendable {
     /// Downloads a specific manual provisioning profile by its profile ID.
     public func downloadProvisioningProfile(profileId: String, teamId: String) async throws -> DeveloperProvisioningProfile {
         let response: ProvisioningProfileResponse = try await performRequest(
-            action: "ios/downloadProvisioningProfile.action",
+            action: Constants.URLs.downloadProfile,
             parameters: ["provisioningProfileId": profileId],
             teamId: teamId,
             context: "profile"
@@ -402,7 +402,7 @@ public final class DeveloperPortalClient: @unchecked Sendable {
     @discardableResult
     public func deleteProvisioningProfile(profileId: String, teamId: String) async throws -> Bool {
         let _: DeveloperPortalStatusResponse = try await performRequest(
-            action: "ios/deleteProvisioningProfile.action",
+            action: Constants.URLs.deleteProvisioningProfile,
             parameters: ["provisioningProfileId": profileId],
             teamId: teamId,
             context: "profile"

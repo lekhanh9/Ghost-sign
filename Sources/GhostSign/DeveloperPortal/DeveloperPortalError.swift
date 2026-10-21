@@ -148,17 +148,17 @@ public enum DeveloperPortalError: Error, CustomStringConvertible, LocalizedError
 public struct DeveloperPortalResultCodeMapper {
     public static func map(code: Int, message: String, context: String? = nil) -> DeveloperPortalError {
         switch code {
-        case 3250:
+        case Constants.ResultCodes.invalidCertificateRequest:
             return .invalidCertificateRequest
-        case 37:
+        case Constants.ResultCodes.maximumAppIDLimitReached:
             return .maximumAppIDLimitReached
-        case 7460:
+        case Constants.ResultCodes.maximumCertificatesReachedAlternate:
             return .maximumCertificatesReached
-        case 8201, 9115:
+        case Constants.ResultCodes.profileNotFound, Constants.ResultCodes.profileNotFoundAlternate:
             return .profileNotFound
-        case -22406:
+        case Constants.ResultCodes.sessionExpired:
             return .unauthenticated(message)
-        case 35:
+        case Constants.ResultCodes.deviceAlreadyRegistered: // 35
             let lower = message.lowercased()
             if context == "device" || lower.contains("device") {
                 if lower.contains("maximum") || lower.contains("limit") {
