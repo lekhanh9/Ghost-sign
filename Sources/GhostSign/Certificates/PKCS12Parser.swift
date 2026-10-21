@@ -300,10 +300,21 @@ public enum PKCS12Parser {
             // Key derivation (PBKDF2)
             let pbkdf2Children = parseSequenceChildren(from: pbes2Params[0].value)
             guard pbkdf2Children.count >= 2 else { throw PKCS12Error.decryptionFailed("Invalid PBKDF2 params") }
-            let salt = pbkdf2Children[0].value
+
+            let kdfParamsValue: Data
+            if pbkdf2Children[0].tag == 0x06 {
+                // pbkdf2Children[0] is OID, pbkdf2Children[1] is PBKDF2-params SEQUENCE
+                kdfParamsValue = pbkdf2Children[1].value
+            } else {
+                kdfParamsValue = pbes2Params[0].value
+            }
+
+            let kdfInner = parseSequenceChildren(from: kdfParamsValue)
+            guard kdfInner.count >= 2 else { throw PKCS12Error.decryptionFailed("Invalid salt/iterations in PBKDF2 params") }
+            let salt = kdfInner[0].value
             var iterationCount = 2048
-            if let iterTLV = parseTLV(from: pbkdf2Children[1].rawDER), iterTLV.tag == 0x02 {
-                iterationCount = iterTLV.value.reduce(0) { ($0 << 8) | Int($1) }
+            if kdfInner[1].tag == 0x02 {
+                iterationCount = kdfInner[1].value.reduce(0) { ($0 << 8) | Int($1) }
             }
 
             // Encryption scheme (AES-CBC)

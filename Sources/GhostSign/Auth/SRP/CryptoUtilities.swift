@@ -86,6 +86,20 @@ public enum CryptoUtilities {
         }
     }
 
+    /// Encrypts plaintext using AES-CBC with PKCS#7 padding
+    public static func aesCBCEncrypt(key: Data, iv: Data, plaintext: Data) -> Data? {
+        guard iv.count >= 16 else { return nil }
+        guard key.count == 16 || key.count == 24 || key.count == 32 else { return nil }
+
+        do {
+            let symmetricKey = SymmetricKey(data: key)
+            let ivObj = try AES._CBC.IV(ivBytes: iv.prefix(16))
+            return try AES._CBC.encrypt(plaintext, using: symmetricKey, iv: ivObj, noPadding: false)
+        } catch {
+            return nil
+        }
+    }
+
     /// Decrypts ciphertext with AES-GCM using key, nonce, aad, and tag
     public static func aesGCMDecrypt(
         key: Data,
