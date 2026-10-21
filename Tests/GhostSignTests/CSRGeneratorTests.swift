@@ -295,29 +295,157 @@ final class CSRGeneratorTests: XCTestCase {
         XCTAssertTrue(derOutput.contains("Certificate request self-signature verify OK"), "OpenSSL verify output: \(derOutput)")
     }
 
-    func testMalformedDERLengthOverflowDoesNotTrap() {
-        // Adversarial test payload with 8-byte length header and bit 63 set
-        let malformed = Data([0x30, 0x88, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00])
-        let verified = CSRGenerator.verify(csrDER: malformed)
-        XCTAssertFalse(verified)
-        XCTAssertThrowsError(try CSRGenerator.verifyCSR(der: malformed))
+    // MARK: - Adversarial Regression Tests (ASN.1 Overflow & Loose PEM Parsing)
+
+    func testASN1LengthOverflowAttacksDoNotCrashCSRParser() {
+        let overflowVectors: [(name: String, data: Data)] = [
+            ("8-byte negative overflow (Challenger 1 defect)", Data([0x30, 0x88, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00])),
+            ("5-byte excessive length (> 4 bytes)", Data([0x30, 0x85, 0x01, 0x00, 0x00, 0x00, 0x00, 0xAA, 0xBB])),
+            ("8-byte Int64.max overflow", Data([0x30, 0x88, 0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01, 0x02])),
+            ("Indefinite length (forbidden in DER)", Data([0x30, 0x80, 0x02, 0x01, 0x00, 0x00, 0x00])),
+            ("127-byte length octet (0xFF)", Data([0x30, 0xFF] + Array(repeating: UInt8(0x01), count: 127))),
+            ("2GB excessive length (0x84, 0x7F...)", Data([0x30, 0x84, 0x7F, 0xFF, 0xFF, 0xFF, 0x00, 0x00])),
+            ("Malformed inner CRI child with 8-byte overflow", Data([0x30, 0x12, 0x30, 0x88, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00]))
+        ]
+
+        for (name, vector) in overflowVectors {
+            let tlv = ASN1DER.parseTLV(from: vector)
+            XCTAssertNil(tlv, "[\(name)] ASN1DER.parseTLV must return nil for overflow length")
+
+            let children = ASN1DER.parseChildren(from: vector)
+            XCTAssertTrue(children.isEmpty || children.count <= 1, "[\(name)] ASN1DER.parseChildren must not crash")
+
+            let isValid = CSRGenerator.verify(csrDER: vector)
+            XCTAssertFalse(isValid, "[\(name)] CSRGenerator.verify must return false for overflow length")
+
+            XCTAssertThrowsError(try CSRGenerator.verifyCSR(der: vector), "[\(name)] verifyCSR must throw") { error in
+                guard let csrError = error as? CSRGeneratorError else {
+                    XCTFail("[\(name)] Expected CSRGeneratorError, got: \(error)")
+                    return
+                }
+                switch csrError {
+                case .invalidASN1Structure, .verificationFailed:
+                    break
+                default:
+                    XCTFail("[\(name)] Unexpected error case: \(csrError)")
+                }
+            }
+
+            XCTAssertThrowsError(try CSRGenerator.extractSubject(from: vector), "[\(name)] extractSubject must throw") { error in
+                guard let csrError = error as? CSRGeneratorError else {
+                    XCTFail("[\(name)] Expected CSRGeneratorError, got: \(error)")
+                    return
+                }
+                guard case .invalidASN1Structure = csrError else {
+                    XCTFail("[\(name)] Expected invalidASN1Structure, got: \(csrError)")
+                    return
+                }
+            }
+        }
     }
 
-    func testTruncatedPEMMissingEndDelimiterThrows() throws {
+    func testASN1DERMalformedLengthEdgeCases() {
+        // Negative offset handling
+        let validDER = Data([0x30, 0x02, 0x01, 0x02])
+        XCTAssertNil(ASN1DER.parseTLV(from: validDER, at: -1))
+
+        // Valid long-form 4-byte length parsing
+        let validLongForm = Data([0x30, 0x84, 0x00, 0x00, 0x00, 0x03, 0x01, 0x02, 0x03])
+        let parsed = ASN1DER.parseTLV(from: validLongForm, at: 0)
+        XCTAssertNotNil(parsed)
+        XCTAssertEqual(parsed?.tag, 0x30)
+        XCTAssertEqual(parsed?.value, Data([0x01, 0x02, 0x03]))
+        XCTAssertEqual(parsed?.totalLength, 9)
+
+        // Truncated length octets
+        let truncatedLength = Data([0x30, 0x84, 0x01, 0x02])
+        XCTAssertNil(ASN1DER.parseTLV(from: truncatedLength))
+
+        // Truncated value payload
+        let truncatedValue = Data([0x30, 0x82, 0x01, 0x00, 0xAA, 0xBB])
+        XCTAssertNil(ASN1DER.parseTLV(from: truncatedValue))
+    }
+
+    func testPEMParsingRejectsTruncatedCSRDelimiters() throws {
         let keyPair = try RSAKeyPair()
-        let subject = CSRSubject(commonName: "Test CN")
+        let subject = CSRSubject.appleDevelopment(name: "Truncated Test", userID: "TRUNC1")
         let (_, validPEM) = try CSRGenerator.generateCSR(keyPair: keyPair, subject: subject)
 
         let truncated = validPEM.replacingOccurrences(of: "-----END CERTIFICATE REQUEST-----", with: "")
         XCTAssertThrowsError(try CSRGenerator.pemToDER(truncated))
+        XCTAssertFalse(CSRGenerator.verify(csrPEM: truncated))
+        XCTAssertThrowsError(try CSRGenerator.verifyCSR(pem: truncated))
+        XCTAssertThrowsError(try CSRGenerator.extractSubject(from: truncated))
+
+        XCTAssertThrowsError(try CSRGenerator.pemToDER(""))
+        XCTAssertThrowsError(try CSRGenerator.pemToDER("-----BEGIN CERTIFICATE REQUEST-----\n"))
     }
 
-    func testMismatchedPEMArmorsThrows() throws {
+    func testPEMParsingRejectsMismatchedCSRArmors() throws {
         let keyPair = try RSAKeyPair()
-        let subject = CSRSubject(commonName: "Test CN")
+        let subject = CSRSubject.appleDevelopment(name: "Mismatch Test", userID: "MISMATCH1")
         let (_, validPEM) = try CSRGenerator.generateCSR(keyPair: keyPair, subject: subject)
 
-        let mismatched = validPEM.replacingOccurrences(of: "-----END CERTIFICATE REQUEST-----", with: "-----END RSA PRIVATE KEY-----")
-        XCTAssertThrowsError(try CSRGenerator.pemToDER(mismatched))
+        let mismatchedEndings: [(tag: String, desc: String)] = [
+            ("-----END CERTIFICATE-----", "CERTIFICATE"),
+            ("-----END RSA PRIVATE KEY-----", "RSA PRIVATE KEY"),
+            ("-----END PRIVATE KEY-----", "PRIVATE KEY"),
+            ("-----END PUBLIC KEY-----", "PUBLIC KEY"),
+            ("-----END NEW CERTIFICATE REQUEST-----", "NEW CERTIFICATE REQUEST")
+        ]
+
+        for (mismatchedEnding, desc) in mismatchedEndings {
+            let mismatched = validPEM.replacingOccurrences(
+                of: "-----END CERTIFICATE REQUEST-----",
+                with: mismatchedEnding
+            )
+            XCTAssertThrowsError(try CSRGenerator.pemToDER(mismatched), "[\(desc)] Expected pemToDER to throw")
+            XCTAssertFalse(CSRGenerator.verify(csrPEM: mismatched), "[\(desc)] verify must return false")
+            XCTAssertThrowsError(try CSRGenerator.verifyCSR(pem: mismatched), "[\(desc)] verifyCSR must throw")
+            XCTAssertThrowsError(try CSRGenerator.extractSubject(from: mismatched), "[\(desc)] extractSubject must throw")
+        }
+    }
+
+    func testPEMVerificationWithEmbeddedASN1LengthOverflow() {
+        let maliciousDER = Data([0x30, 0x88, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00])
+        let maliciousBase64 = maliciousDER.base64EncodedString()
+        let maliciousPEM = "-----BEGIN CERTIFICATE REQUEST-----\n\(maliciousBase64)\n-----END CERTIFICATE REQUEST-----\n"
+
+        XCTAssertNoThrow(try CSRGenerator.pemToDER(maliciousPEM))
+        XCTAssertFalse(CSRGenerator.verify(csrPEM: maliciousPEM))
+        XCTAssertThrowsError(try CSRGenerator.verifyCSR(pem: maliciousPEM)) { error in
+            guard let csrError = error as? CSRGeneratorError, case .invalidASN1Structure = csrError else {
+                XCTFail("Expected invalidASN1Structure, got \(error)")
+                return
+            }
+        }
+        XCTAssertThrowsError(try CSRGenerator.extractSubject(from: maliciousPEM)) { error in
+            guard let csrError = error as? CSRGeneratorError, case .invalidASN1Structure = csrError else {
+                XCTFail("Expected invalidASN1Structure, got \(error)")
+                return
+            }
+        }
+    }
+
+    func testCSREmbeddedDelimiterInsideBlockThrows() throws {
+        let keyPair = try RSAKeyPair()
+        let (_, validPEM) = try CSRGenerator.generateCSR(keyPair: keyPair, subject: CSRSubject(commonName: "Test"))
+
+        let embedded = validPEM.replacingOccurrences(
+            of: "-----END CERTIFICATE REQUEST-----",
+            with: "-----END RSA PRIVATE KEY-----\n-----END CERTIFICATE REQUEST-----"
+        )
+        XCTAssertThrowsError(try CSRGenerator.pemToDER(embedded))
+    }
+
+    func testCSRNestedBeginDelimiterThrows() throws {
+        let keyPair = try RSAKeyPair()
+        let (_, validPEM) = try CSRGenerator.generateCSR(keyPair: keyPair, subject: CSRSubject(commonName: "Test"))
+
+        let nested = validPEM.replacingOccurrences(
+            of: "-----BEGIN CERTIFICATE REQUEST-----",
+            with: "-----BEGIN CERTIFICATE REQUEST-----\n-----BEGIN CERTIFICATE REQUEST-----"
+        )
+        XCTAssertThrowsError(try CSRGenerator.pemToDER(nested))
     }
 }

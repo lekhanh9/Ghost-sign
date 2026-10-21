@@ -215,19 +215,219 @@ final class RSAKeyPairTests: XCTestCase {
         XCTAssertTrue(p8Output.contains("RSA key ok"))
     }
 
-    func testTruncatedPEMThrows() throws {
-        let keyPair = try RSAKeyPair()
-        let pkcs1PEM = keyPair.pkcs1PEM
+    // MARK: - Adversarial Regression Tests (ASN.1 Overflow & Loose PEM Parsing)
 
-        let truncated = pkcs1PEM.replacingOccurrences(of: "-----END RSA PRIVATE KEY-----", with: "")
-        XCTAssertThrowsError(try RSAKeyPair(pemRepresentation: truncated))
+    func testDERImportRejectsASN1LengthOverflowAttacks() {
+        let vectors: [(name: String, data: Data)] = [
+            ("8-byte negative overflow", Data([0x30, 0x88, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00])),
+            ("5-byte excessive length", Data([0x30, 0x85, 0x01, 0x00, 0x00, 0x00, 0x00, 0xAA, 0xBB])),
+            ("8-byte Int64.max overflow", Data([0x30, 0x88, 0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01, 0x02])),
+            ("Indefinite length", Data([0x30, 0x80, 0x02, 0x01, 0x00, 0x00, 0x00])),
+            ("127-byte length octet", Data([0x30, 0xFF] + Array(repeating: UInt8(0x01), count: 127))),
+            ("2GB excessive length", Data([0x30, 0x84, 0x7F, 0xFF, 0xFF, 0xFF, 0x00, 0x00]))
+        ]
+
+        for (name, data) in vectors {
+            XCTAssertThrowsError(try RSAKeyPair(derRepresentation: data), "[\(name)] derRepresentation") { error in
+                guard let keyError = error as? RSAKeyPairError, case .invalidDERFormat = keyError else {
+                    XCTFail("[\(name)] Expected invalidDERFormat, got: \(error)")
+                    return
+                }
+            }
+            XCTAssertThrowsError(try RSAKeyPair(pkcs1DER: data), "[\(name)] pkcs1DER") { error in
+                guard let keyError = error as? RSAKeyPairError, case .invalidDERFormat = keyError else {
+                    XCTFail("[\(name)] Expected invalidDERFormat for pkcs1DER, got: \(error)")
+                    return
+                }
+            }
+            XCTAssertThrowsError(try RSAKeyPair(pkcs8DER: data), "[\(name)] pkcs8DER") { error in
+                guard let keyError = error as? RSAKeyPairError, case .invalidDERFormat = keyError else {
+                    XCTFail("[\(name)] Expected invalidDERFormat for pkcs8DER, got: \(error)")
+                    return
+                }
+            }
+        }
     }
 
-    func testMismatchedPEMArmorsThrows() throws {
+    func testPEMParsingRejectsTruncatedPrivateKeyArmors() throws {
+        let keyPair = try RSAKeyPair()
+        let pkcs1PEM = keyPair.pkcs1PEM
+        let pkcs8PEM = keyPair.pkcs8PEM
+
+        // 1. Truncated PKCS#1: Remove closing delimiter completely
+        let truncatedPKCS1 = pkcs1PEM.replacingOccurrences(of: "-----END RSA PRIVATE KEY-----", with: "")
+        XCTAssertThrowsError(try RSAKeyPair(pemRepresentation: truncatedPKCS1)) { error in
+            guard let keyError = error as? RSAKeyPairError, case .invalidPEMFormat = keyError else {
+                XCTFail("Expected invalidPEMFormat for truncated PKCS#1 PEM, got: \(error)")
+                return
+            }
+        }
+        XCTAssertThrowsError(try RSAKeyPair(pkcs1PEM: truncatedPKCS1)) { error in
+            guard let keyError = error as? RSAKeyPairError, case .invalidPEMFormat = keyError else {
+                XCTFail("Expected invalidPEMFormat for truncated pkcs1PEM convenience init, got: \(error)")
+                return
+            }
+        }
+
+        // 2. Truncated PKCS#8: Remove closing delimiter completely
+        let truncatedPKCS8 = pkcs8PEM.replacingOccurrences(of: "-----END PRIVATE KEY-----", with: "")
+        XCTAssertThrowsError(try RSAKeyPair(pemRepresentation: truncatedPKCS8)) { error in
+            guard let keyError = error as? RSAKeyPairError, case .invalidPEMFormat = keyError else {
+                XCTFail("Expected invalidPEMFormat for truncated PKCS#8 PEM, got: \(error)")
+                return
+            }
+        }
+        XCTAssertThrowsError(try RSAKeyPair(pkcs8PEM: truncatedPKCS8)) { error in
+            guard let keyError = error as? RSAKeyPairError, case .invalidPEMFormat = keyError else {
+                XCTFail("Expected invalidPEMFormat for truncated pkcs8PEM convenience init, got: \(error)")
+                return
+            }
+        }
+
+        // 3. Truncated with trailing newlines and whitespace
+        let truncatedWithWhitespace = truncatedPKCS1 + "\n\n   \n\t"
+        XCTAssertThrowsError(try RSAKeyPair(pemRepresentation: truncatedWithWhitespace)) { error in
+            guard let keyError = error as? RSAKeyPairError, case .invalidPEMFormat = keyError else {
+                XCTFail("Expected invalidPEMFormat for truncated PEM with whitespace, got: \(error)")
+                return
+            }
+        }
+
+        // 4. PEM with only opening delimiter
+        let onlyOpeningPKCS1 = "-----BEGIN RSA PRIVATE KEY-----\n"
+        XCTAssertThrowsError(try RSAKeyPair(pemRepresentation: onlyOpeningPKCS1)) { error in
+            guard let keyError = error as? RSAKeyPairError, case .invalidPEMFormat = keyError else {
+                XCTFail("Expected invalidPEMFormat for only-opening delimiter, got: \(error)")
+                return
+            }
+        }
+
+        let onlyOpeningPKCS8 = "-----BEGIN PRIVATE KEY-----\n"
+        XCTAssertThrowsError(try RSAKeyPair(pemRepresentation: onlyOpeningPKCS8)) { error in
+            guard let keyError = error as? RSAKeyPairError, case .invalidPEMFormat = keyError else {
+                XCTFail("Expected invalidPEMFormat for only-opening PKCS#8 delimiter, got: \(error)")
+                return
+            }
+        }
+    }
+
+    func testPEMParsingRejectsMismatchedArmorDelimiters() throws {
+        let keyPair = try RSAKeyPair()
+        let pkcs1PEM = keyPair.pkcs1PEM
+        let pkcs8PEM = keyPair.pkcs8PEM
+
+        // 1. BEGIN RSA PRIVATE KEY paired with END CERTIFICATE
+        let p1MismatchedCert = pkcs1PEM.replacingOccurrences(
+            of: "-----END RSA PRIVATE KEY-----",
+            with: "-----END CERTIFICATE-----"
+        )
+        XCTAssertThrowsError(try RSAKeyPair(pemRepresentation: p1MismatchedCert)) { error in
+            guard let keyError = error as? RSAKeyPairError, case .invalidPEMFormat = keyError else {
+                XCTFail("Expected invalidPEMFormat for RSA KEY paired with CERTIFICATE, got: \(error)")
+                return
+            }
+        }
+
+        // 2. BEGIN RSA PRIVATE KEY paired with END PRIVATE KEY (PKCS#1 header with PKCS#8 footer)
+        let p1MismatchedPKCS8 = pkcs1PEM.replacingOccurrences(
+            of: "-----END RSA PRIVATE KEY-----",
+            with: "-----END PRIVATE KEY-----"
+        )
+        XCTAssertThrowsError(try RSAKeyPair(pemRepresentation: p1MismatchedPKCS8)) { error in
+            guard let keyError = error as? RSAKeyPairError, case .invalidPEMFormat = keyError else {
+                XCTFail("Expected invalidPEMFormat for PKCS#1 header with PKCS#8 footer, got: \(error)")
+                return
+            }
+        }
+
+        // 3. BEGIN PRIVATE KEY paired with END RSA PRIVATE KEY (PKCS#8 header with PKCS#1 footer)
+        let p8MismatchedPKCS1 = pkcs8PEM.replacingOccurrences(
+            of: "-----END PRIVATE KEY-----",
+            with: "-----END RSA PRIVATE KEY-----"
+        )
+        XCTAssertThrowsError(try RSAKeyPair(pemRepresentation: p8MismatchedPKCS1)) { error in
+            guard let keyError = error as? RSAKeyPairError, case .invalidPEMFormat = keyError else {
+                XCTFail("Expected invalidPEMFormat for PKCS#8 header with PKCS#1 footer, got: \(error)")
+                return
+            }
+        }
+
+        // 4. BEGIN PRIVATE KEY paired with END CERTIFICATE
+        let p8MismatchedCert = pkcs8PEM.replacingOccurrences(
+            of: "-----END PRIVATE KEY-----",
+            with: "-----END CERTIFICATE-----"
+        )
+        XCTAssertThrowsError(try RSAKeyPair(pemRepresentation: p8MismatchedCert)) { error in
+            guard let keyError = error as? RSAKeyPairError, case .invalidPEMFormat = keyError else {
+                XCTFail("Expected invalidPEMFormat for PRIVATE KEY paired with CERTIFICATE, got: \(error)")
+                return
+            }
+        }
+
+        // 5. BEGIN RSA PRIVATE KEY paired with END PUBLIC KEY
+        let p1MismatchedPubKey = pkcs1PEM.replacingOccurrences(
+            of: "-----END RSA PRIVATE KEY-----",
+            with: "-----END PUBLIC KEY-----"
+        )
+        XCTAssertThrowsError(try RSAKeyPair(pemRepresentation: p1MismatchedPubKey)) { error in
+            guard let keyError = error as? RSAKeyPairError, case .invalidPEMFormat = keyError else {
+                XCTFail("Expected invalidPEMFormat for RSA KEY paired with PUBLIC KEY, got: \(error)")
+                return
+            }
+        }
+
+        // 6. BEGIN RSA PRIVATE KEY paired with END EC PRIVATE KEY
+        let p1MismatchedEC = pkcs1PEM.replacingOccurrences(
+            of: "-----END RSA PRIVATE KEY-----",
+            with: "-----END EC PRIVATE KEY-----"
+        )
+        XCTAssertThrowsError(try RSAKeyPair(pemRepresentation: p1MismatchedEC)) { error in
+            guard let keyError = error as? RSAKeyPairError, case .invalidPEMFormat = keyError else {
+                XCTFail("Expected invalidPEMFormat for RSA KEY paired with EC KEY, got: \(error)")
+                return
+            }
+        }
+    }
+
+    func testPEMImportRejectsEmbeddedASN1LengthOverflow() {
+        let maliciousDER = Data([0x30, 0x88, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00])
+        let maliciousBase64 = maliciousDER.base64EncodedString()
+        let maliciousPEM = "-----BEGIN RSA PRIVATE KEY-----\n\(maliciousBase64)\n-----END RSA PRIVATE KEY-----\n"
+
+        XCTAssertThrowsError(try RSAKeyPair(pemRepresentation: maliciousPEM)) { error in
+            guard let keyError = error as? RSAKeyPairError else {
+                XCTFail("Expected RSAKeyPairError, got: \(error)")
+                return
+            }
+            switch keyError {
+            case .invalidDERFormat, .invalidPEMFormat:
+                break
+            default:
+                XCTFail("Unexpected error: \(keyError)")
+            }
+        }
+    }
+
+    func testEmbeddedDelimiterInsideBlockThrows() throws {
         let keyPair = try RSAKeyPair()
         let pkcs1PEM = keyPair.pkcs1PEM
 
-        let mismatched = pkcs1PEM.replacingOccurrences(of: "-----END RSA PRIVATE KEY-----", with: "-----END CERTIFICATE-----")
-        XCTAssertThrowsError(try RSAKeyPair(pemRepresentation: mismatched))
+        // Embedded END CERTIFICATE inside block must not be swallowed into base64
+        let embedded = pkcs1PEM.replacingOccurrences(
+            of: "-----END RSA PRIVATE KEY-----",
+            with: "-----END CERTIFICATE-----\n-----END RSA PRIVATE KEY-----"
+        )
+        XCTAssertThrowsError(try RSAKeyPair(pemRepresentation: embedded))
+    }
+
+    func testNestedBeginDelimiterThrows() throws {
+        let keyPair = try RSAKeyPair()
+        let pkcs1PEM = keyPair.pkcs1PEM
+
+        let nested = pkcs1PEM.replacingOccurrences(
+            of: "-----BEGIN RSA PRIVATE KEY-----",
+            with: "-----BEGIN RSA PRIVATE KEY-----\n-----BEGIN RSA PRIVATE KEY-----"
+        )
+        XCTAssertThrowsError(try RSAKeyPair(pemRepresentation: nested))
     }
 }

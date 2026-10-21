@@ -89,34 +89,20 @@ public struct RSAKeyPair: Sendable {
     /// Automatically detects and parses both PKCS#1 (`BEGIN RSA PRIVATE KEY`)
     /// and PKCS#8 (`BEGIN PRIVATE KEY`) formats.
     public init(pemRepresentation: String) throws {
-        // 1. Try extracting base64 bytes between standard PEM armor markers
-        if let derData = Self.extractDERFromPEM(pemRepresentation) {
-            do {
-                let privKey = try _RSA.Signing.PrivateKey(derRepresentation: derData)
-                guard privKey.keySizeInBits >= 2048 else {
-                    throw RSAKeyPairError.invalidKeySize(privKey.keySizeInBits)
-                }
-                self.privateKey = privKey
-                self.publicKey = privKey.publicKey
-                return
-            } catch let err as RSAKeyPairError {
-                throw err
-            } catch {
-                // If DER parsing of extracted block failed, fall through to native parser
-            }
-        }
-
-        // 2. Direct native parser fallback (handles standard PKCS#1 PEM in BoringSSL)
-        if let privKey = try? _RSA.Signing.PrivateKey(pemRepresentation: pemRepresentation) {
+        // 1. Extract base64 bytes between strict standard PEM armor markers
+        let derData = try Self.extractDERFromPEM(pemRepresentation)
+        do {
+            let privKey = try _RSA.Signing.PrivateKey(derRepresentation: derData)
             guard privKey.keySizeInBits >= 2048 else {
                 throw RSAKeyPairError.invalidKeySize(privKey.keySizeInBits)
             }
             self.privateKey = privKey
             self.publicKey = privKey.publicKey
-            return
+        } catch let err as RSAKeyPairError {
+            throw err
+        } catch {
+            throw RSAKeyPairError.invalidDERFormat(error.localizedDescription)
         }
-
-        throw RSAKeyPairError.invalidPEMFormat("No valid PKCS#1 or PKCS#8 RSA private key found in PEM string")
     }
 
     /// Convenience initializer for PKCS#1 DER format.
@@ -188,31 +174,62 @@ public struct RSAKeyPair: Sendable {
 
     // MARK: - Helper Methods
 
-    private static func extractDERFromPEM(_ pem: String) -> Data? {
+    private static func extractDERFromPEM(_ pem: String) throws -> Data {
         let lines = pem.components(separatedBy: .newlines)
         var base64 = ""
         var inBlock = false
+        var openedTag = ""
         var blockClosed = false
 
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { continue }
+
             if trimmed.hasPrefix("-----BEGIN ") && trimmed.hasSuffix("-----") {
-                if trimmed.contains("PRIVATE KEY") {
+                if inBlock {
+                    throw RSAKeyPairError.invalidPEMFormat("Nested or unclosed PEM delimiter before '\(trimmed)'")
+                }
+                guard trimmed.count > 16 else { continue }
+                let tag = String(trimmed.dropFirst(11).dropLast(5))
+                if tag == "RSA PRIVATE KEY" || tag == "PRIVATE KEY" {
                     inBlock = true
+                    openedTag = tag
                     base64 = ""
                 }
             } else if trimmed.hasPrefix("-----END ") && trimmed.hasSuffix("-----") {
-                if inBlock && trimmed.contains("PRIVATE KEY") {
-                    inBlock = false
-                    blockClosed = true
-                    break
+                if inBlock {
+                    guard trimmed.count > 14 else {
+                        throw RSAKeyPairError.invalidPEMFormat("Malformed PEM closing delimiter '\(trimmed)'")
+                    }
+                    let endTag = String(trimmed.dropFirst(9).dropLast(5))
+                    if endTag == openedTag {
+                        inBlock = false
+                        blockClosed = true
+                        break
+                    } else {
+                        throw RSAKeyPairError.invalidPEMFormat("Mismatched PEM delimiters: opened with '-----BEGIN \(openedTag)-----' but closed with '\(trimmed)'")
+                    }
                 }
             } else if inBlock {
+                if trimmed.hasPrefix("-----") {
+                    throw RSAKeyPairError.invalidPEMFormat("Unexpected delimiter or armor header inside PEM block: '\(trimmed)'")
+                }
                 base64.append(trimmed)
             }
         }
 
-        guard blockClosed, !base64.isEmpty else { return nil }
-        return Data(base64Encoded: base64, options: .ignoreUnknownCharacters)
+        if inBlock && !blockClosed {
+            throw RSAKeyPairError.invalidPEMFormat("Truncated PEM: missing closing delimiter '-----END \(openedTag)-----'")
+        }
+
+        guard blockClosed else {
+            throw RSAKeyPairError.invalidPEMFormat("No valid PKCS#1 or PKCS#8 RSA private key found in PEM string")
+        }
+
+        guard !base64.isEmpty, let derData = Data(base64Encoded: base64, options: .ignoreUnknownCharacters) else {
+            throw RSAKeyPairError.invalidPEMFormat("Invalid Base64 payload in RSA private key PEM block")
+        }
+
+        return derData
     }
 }

@@ -438,28 +438,56 @@ public enum CSRGenerator {
         let lines = pem.components(separatedBy: .newlines)
         var base64 = ""
         var inBlock = false
+        var openedTag = ""
         var blockClosed = false
 
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { continue }
+
             if trimmed.hasPrefix("-----BEGIN ") && trimmed.hasSuffix("-----") {
-                if trimmed.contains("CERTIFICATE REQUEST") {
+                if inBlock {
+                    throw CSRGeneratorError.invalidPEMFormat("Nested or unclosed PEM delimiter before '\(trimmed)'")
+                }
+                guard trimmed.count > 16 else { continue }
+                let tag = String(trimmed.dropFirst(11).dropLast(5))
+                if tag == "CERTIFICATE REQUEST" || tag == "NEW CERTIFICATE REQUEST" {
                     inBlock = true
+                    openedTag = tag
                     base64 = ""
                 }
             } else if trimmed.hasPrefix("-----END ") && trimmed.hasSuffix("-----") {
-                if inBlock && trimmed.contains("CERTIFICATE REQUEST") {
-                    inBlock = false
-                    blockClosed = true
-                    break
+                if inBlock {
+                    guard trimmed.count > 14 else {
+                        throw CSRGeneratorError.invalidPEMFormat("Malformed PEM closing delimiter '\(trimmed)'")
+                    }
+                    let endTag = String(trimmed.dropFirst(9).dropLast(5))
+                    if endTag == openedTag {
+                        inBlock = false
+                        blockClosed = true
+                        break
+                    } else {
+                        throw CSRGeneratorError.invalidPEMFormat("Mismatched PEM delimiters: opened with '-----BEGIN \(openedTag)-----' but closed with '\(trimmed)'")
+                    }
                 }
             } else if inBlock {
+                if trimmed.hasPrefix("-----") {
+                    throw CSRGeneratorError.invalidPEMFormat("Unexpected delimiter or armor header inside PEM block: '\(trimmed)'")
+                }
                 base64.append(trimmed)
             }
         }
 
-        guard blockClosed, !base64.isEmpty, let der = Data(base64Encoded: base64, options: .ignoreUnknownCharacters) else {
+        if inBlock && !blockClosed {
+            throw CSRGeneratorError.invalidPEMFormat("Truncated PEM: missing closing delimiter '-----END \(openedTag)-----'")
+        }
+
+        guard blockClosed else {
             throw CSRGeneratorError.invalidPEMFormat("No valid base64-encoded CERTIFICATE REQUEST block found in PEM")
+        }
+
+        guard !base64.isEmpty, let der = Data(base64Encoded: base64, options: .ignoreUnknownCharacters) else {
+            throw CSRGeneratorError.invalidPEMFormat("Invalid Base64 payload in CERTIFICATE REQUEST block")
         }
         return der
     }
@@ -621,7 +649,7 @@ enum ASN1DER {
 
     /// Parses a single TLV from Data at the given offset.
     static func parseTLV(from data: Data, at offset: Int = 0) -> (tag: UInt8, value: Data, totalLength: Int)? {
-        guard offset < data.count else { return nil }
+        guard offset >= 0, offset < data.count else { return nil }
         let base = data.startIndex
         let tag = data[base + offset]
         var current = offset + 1
@@ -635,6 +663,7 @@ enum ASN1DER {
             length = Int(firstLen)
         } else {
             let numBytes = Int(firstLen & 0x7F)
+            // Cap numBytes <= 4 to prevent integer overflow and reject non-conforming DER lengths
             guard numBytes > 0, numBytes <= 4, numBytes <= data.count - current else { return nil }
             var len = 0
             for i in 0..<numBytes {
@@ -644,7 +673,8 @@ enum ASN1DER {
             length = len
         }
 
-        guard length <= data.count - current else { return nil }
+        // Validate bounds safely without integer addition overflow
+        guard length >= 0, length <= data.count - current else { return nil }
         let startIdx = base + current
         let endIdx = startIdx + length
         let value = data.subdata(in: startIdx..<endIdx)
