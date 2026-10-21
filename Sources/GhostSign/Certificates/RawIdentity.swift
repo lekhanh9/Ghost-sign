@@ -76,7 +76,10 @@ public struct RawIdentity: Sendable, Equatable {
                 currentType = String(trimmed[start..<end])
                 currentBase64 = ""
             } else if trimmed.hasPrefix("-----END ") && trimmed.hasSuffix("-----") {
-                if let type = currentType, let data = Data(base64Encoded: currentBase64) {
+                let start = trimmed.index(trimmed.startIndex, offsetBy: 9)
+                let end = trimmed.index(trimmed.endIndex, offsetBy: -5)
+                let endType = String(trimmed[start..<end])
+                if let type = currentType, type == endType, let data = Data(base64Encoded: currentBase64) {
                     blocks.append((type: type, data: data))
                 }
                 currentType = nil

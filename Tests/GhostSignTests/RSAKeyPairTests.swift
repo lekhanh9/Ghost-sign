@@ -214,4 +214,20 @@ final class RSAKeyPairTests: XCTestCase {
         let p8Output = String(data: p8Pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
         XCTAssertTrue(p8Output.contains("RSA key ok"))
     }
+
+    func testTruncatedPEMThrows() throws {
+        let keyPair = try RSAKeyPair()
+        let pkcs1PEM = keyPair.pkcs1PEM
+
+        let truncated = pkcs1PEM.replacingOccurrences(of: "-----END RSA PRIVATE KEY-----", with: "")
+        XCTAssertThrowsError(try RSAKeyPair(pemRepresentation: truncated))
+    }
+
+    func testMismatchedPEMArmorsThrows() throws {
+        let keyPair = try RSAKeyPair()
+        let pkcs1PEM = keyPair.pkcs1PEM
+
+        let mismatched = pkcs1PEM.replacingOccurrences(of: "-----END RSA PRIVATE KEY-----", with: "-----END CERTIFICATE-----")
+        XCTAssertThrowsError(try RSAKeyPair(pemRepresentation: mismatched))
+    }
 }

@@ -192,6 +192,7 @@ public struct RSAKeyPair: Sendable {
         let lines = pem.components(separatedBy: .newlines)
         var base64 = ""
         var inBlock = false
+        var blockClosed = false
 
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -201,8 +202,9 @@ public struct RSAKeyPair: Sendable {
                     base64 = ""
                 }
             } else if trimmed.hasPrefix("-----END ") && trimmed.hasSuffix("-----") {
-                if inBlock {
+                if inBlock && trimmed.contains("PRIVATE KEY") {
                     inBlock = false
+                    blockClosed = true
                     break
                 }
             } else if inBlock {
@@ -210,7 +212,7 @@ public struct RSAKeyPair: Sendable {
             }
         }
 
-        guard !base64.isEmpty else { return nil }
+        guard blockClosed, !base64.isEmpty else { return nil }
         return Data(base64Encoded: base64, options: .ignoreUnknownCharacters)
     }
 }

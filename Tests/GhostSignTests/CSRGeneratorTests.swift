@@ -294,4 +294,30 @@ final class CSRGeneratorTests: XCTestCase {
         let derOutput = String(data: derPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
         XCTAssertTrue(derOutput.contains("Certificate request self-signature verify OK"), "OpenSSL verify output: \(derOutput)")
     }
+
+    func testMalformedDERLengthOverflowDoesNotTrap() {
+        // Adversarial test payload with 8-byte length header and bit 63 set
+        let malformed = Data([0x30, 0x88, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00])
+        let verified = CSRGenerator.verify(csrDER: malformed)
+        XCTAssertFalse(verified)
+        XCTAssertThrowsError(try CSRGenerator.verifyCSR(der: malformed))
+    }
+
+    func testTruncatedPEMMissingEndDelimiterThrows() throws {
+        let keyPair = try RSAKeyPair()
+        let subject = CSRSubject(commonName: "Test CN")
+        let (_, validPEM) = try CSRGenerator.generateCSR(keyPair: keyPair, subject: subject)
+
+        let truncated = validPEM.replacingOccurrences(of: "-----END CERTIFICATE REQUEST-----", with: "")
+        XCTAssertThrowsError(try CSRGenerator.pemToDER(truncated))
+    }
+
+    func testMismatchedPEMArmorsThrows() throws {
+        let keyPair = try RSAKeyPair()
+        let subject = CSRSubject(commonName: "Test CN")
+        let (_, validPEM) = try CSRGenerator.generateCSR(keyPair: keyPair, subject: subject)
+
+        let mismatched = validPEM.replacingOccurrences(of: "-----END CERTIFICATE REQUEST-----", with: "-----END RSA PRIVATE KEY-----")
+        XCTAssertThrowsError(try CSRGenerator.pemToDER(mismatched))
+    }
 }

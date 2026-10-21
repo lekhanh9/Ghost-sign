@@ -438,6 +438,7 @@ public enum CSRGenerator {
         let lines = pem.components(separatedBy: .newlines)
         var base64 = ""
         var inBlock = false
+        var blockClosed = false
 
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -447,8 +448,9 @@ public enum CSRGenerator {
                     base64 = ""
                 }
             } else if trimmed.hasPrefix("-----END ") && trimmed.hasSuffix("-----") {
-                if inBlock {
+                if inBlock && trimmed.contains("CERTIFICATE REQUEST") {
                     inBlock = false
+                    blockClosed = true
                     break
                 }
             } else if inBlock {
@@ -456,7 +458,7 @@ public enum CSRGenerator {
             }
         }
 
-        guard !base64.isEmpty, let der = Data(base64Encoded: base64, options: .ignoreUnknownCharacters) else {
+        guard blockClosed, !base64.isEmpty, let der = Data(base64Encoded: base64, options: .ignoreUnknownCharacters) else {
             throw CSRGeneratorError.invalidPEMFormat("No valid base64-encoded CERTIFICATE REQUEST block found in PEM")
         }
         return der
@@ -633,7 +635,7 @@ enum ASN1DER {
             length = Int(firstLen)
         } else {
             let numBytes = Int(firstLen & 0x7F)
-            guard numBytes > 0, current + numBytes <= data.count else { return nil }
+            guard numBytes > 0, numBytes <= 4, current + numBytes <= data.count else { return nil }
             var len = 0
             for i in 0..<numBytes {
                 len = (len << 8) | Int(data[base + current + i])
