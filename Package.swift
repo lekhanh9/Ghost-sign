@@ -15,9 +15,15 @@ let package = Package(
             targets: ["GhostSign"]
         ),
     ],
+    dependencies: [
+        .package(path: "../ghost-code"),
+    ],
     targets: [
         .target(
-            name: "GhostSign"
+            name: "GhostSign",
+            dependencies: [
+                .product(name: "GhostCode", package: "ghost-code"),
+            ]
         ),
         .testTarget(
             name: "GhostSignTests",
