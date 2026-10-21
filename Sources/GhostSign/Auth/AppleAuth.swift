@@ -38,14 +38,17 @@ public enum AppleAuthError: LocalizedError, Equatable {
 
 public final class AppleAuth: Sendable {
     public let anisetteProvider: AnisetteDataProvider
+    public let gsaClient: GSAClient
     private let urlSession: URLSession
 
     public init(
         anisetteProvider: AnisetteDataProvider = MockAnisetteDataProvider(),
-        urlSession: URLSession = .shared
+        urlSession: URLSession = .shared,
+        gsaClient: GSAClient? = nil
     ) {
         self.anisetteProvider = anisetteProvider
         self.urlSession = urlSession
+        self.gsaClient = gsaClient ?? GSAClient(urlSession: urlSession)
     }
 
     /// Primary high-level login function completing authentication or throwing requiresTwoFactor.
@@ -70,20 +73,74 @@ public final class AppleAuth: Sendable {
         }
 
         let anisette = try await anisetteProvider.fetchAnisetteData()
+        let srp = SRPClient()
+        let publicKeyA = srp.startAuthentication()
 
-        // Placeholder for full SRP network exchange (GsService2 init -> complete)
-        // In the next step, this connects to the SRPClient engine.
-        let dsid = "adsid_\(abs(sanitizedAppleID.hashValue))"
-        let dummySessionKey = Data(repeating: 0x42, count: 32)
-        let dummyIdmsToken = "gs_idms_token_\(UUID().uuidString)"
+        let initResponse = try await gsaClient.sendInit(
+            appleID: sanitizedAppleID,
+            clientPublicKeyA: publicKeyA,
+            anisette: anisette
+        )
+
+        guard let derivedKey = srp.derivePasswordKey(
+            password: password,
+            salt: initResponse.salt,
+            iterations: initResponse.iterations,
+            isS2KFO: initResponse.isS2KFO
+        ) else {
+            throw AppleAuthError.handshakeFailed("Failed to derive PBKDF2 password key.")
+        }
+
+        guard let proofM1 = srp.processChallenge(
+            username: sanitizedAppleID,
+            derivedPasswordKey: derivedKey,
+            salt: initResponse.salt,
+            serverPublicKey: initResponse.serverPublicKeyB
+        ) else {
+            throw AppleAuthError.handshakeFailed("Failed to compute SRP proof M1.")
+        }
+
+        let completeResponse = try await gsaClient.sendComplete(
+            appleID: sanitizedAppleID,
+            proofM1: proofM1,
+            challenge: initResponse.challenge,
+            anisette: anisette
+        )
+
+        guard srp.verifyServerProof(completeResponse.serverProofM2) else {
+            throw AppleAuthError.handshakeFailed("Server proof M2 validation failed.")
+        }
+
+        let decryptedSPD = try srp.decryptSPD(completeResponse.encryptedSPD)
+
+        if completeResponse.requires2FA {
+            let context = TwoFactorContext(
+                appleID: sanitizedAppleID,
+                dsid: decryptedSPD.dsid,
+                idmsToken: decryptedSPD.idmsToken,
+                sessionKey: decryptedSPD.sessionKey,
+                spdData: completeResponse.encryptedSPD,
+                anisetteData: anisette,
+                supportedMethods: [.trustedDevice]
+            )
+            return .requires2FA(context)
+        }
+
+        let appToken = try await gsaClient.sendAppTokens(
+            dsid: decryptedSPD.dsid,
+            idmsToken: decryptedSPD.idmsToken,
+            sessionKey: decryptedSPD.sessionKey,
+            challengeToken: decryptedSPD.challengeToken,
+            anisette: anisette
+        )
 
         let session = AuthSession(
-            dsid: dsid,
-            authToken: "gs_auth_token_\(UUID().uuidString)",
-            idmsToken: dummyIdmsToken,
-            sessionKey: dummySessionKey,
+            dsid: decryptedSPD.dsid,
+            authToken: appToken.token,
+            idmsToken: decryptedSPD.idmsToken,
+            sessionKey: decryptedSPD.sessionKey,
             anisetteData: anisette,
-            expirationDate: Date().addingTimeInterval(86400 * 30)
+            expirationDate: appToken.expirationDate
         )
 
         return .authenticated(session)
@@ -103,13 +160,28 @@ public final class AppleAuth: Sendable {
             throw AppleAuthError.invalid2FACode("Verification code must be at least 6 digits.")
         }
 
+        try await gsaClient.validate2FACode(
+            code: code,
+            dsid: context.dsid,
+            idmsToken: context.idmsToken,
+            anisette: context.anisetteData
+        )
+
+        let appToken = try await gsaClient.sendAppTokens(
+            dsid: context.dsid,
+            idmsToken: context.idmsToken,
+            sessionKey: context.sessionKey,
+            challengeToken: nil,
+            anisette: context.anisetteData
+        )
+
         return AuthSession(
             dsid: context.dsid,
-            authToken: "gs_auth_token_\(UUID().uuidString)",
+            authToken: appToken.token,
             idmsToken: context.idmsToken,
             sessionKey: context.sessionKey,
             anisetteData: context.anisetteData,
-            expirationDate: Date().addingTimeInterval(86400 * 30)
+            expirationDate: appToken.expirationDate
         )
     }
 }

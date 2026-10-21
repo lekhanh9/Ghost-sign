@@ -58,35 +58,100 @@ final class GhostSignTests: XCTestCase {
         XCTAssertTrue(expiredSession.isExpired)
     }
 
-    func testAppleAuthLogin() async throws {
-        let auth = AppleAuth()
-        let result = try await auth.startLogin(appleID: "developer@example.com", password: "SecretPassword123!")
+    func testBigUIntArithmeticAndModExp() throws {
+        let a = BigUInt(123456789)
+        let b = BigUInt(987654321)
+        let sum = a + b
+        XCTAssertEqual(sum.description, BigUInt(1111111110).description)
 
-        switch result {
-        case .authenticated(let session):
-            XCTAssertFalse(session.dsid.isEmpty)
-            XCTAssertFalse(session.authToken.isEmpty)
-            XCTAssertFalse(session.idmsToken.isEmpty)
-            XCTAssertEqual(session.sessionKey.count, 32)
-        case .requires2FA:
-            XCTFail("Did not expect 2FA for mock test")
-        }
+        let diff = b - a
+        XCTAssertEqual(diff.description, BigUInt(864197532).description)
+
+        let prod = a * b
+        XCTAssertTrue(prod > a)
+        XCTAssertTrue(prod > b)
+
+        // Test modular exponentiation: 2^10 mod 1000 = 1024 mod 1000 = 24
+        let base = BigUInt(2)
+        let exp = BigUInt(10)
+        let modulus = BigUInt(1000)
+        let result = base.power(exp, modulus: modulus)
+        XCTAssertEqual(result, BigUInt(24))
     }
 
-    func testAppleAuthSubmit2FACode() async throws {
-        let auth = AppleAuth()
-        let context = TwoFactorContext(
-            appleID: "developer@example.com",
-            dsid: "12345678",
-            idmsToken: "dummy-idms",
-            sessionKey: Data(repeating: 0x01, count: 32),
-            spdData: Data(),
-            anisetteData: AnisetteData()
+    func testSRPClientGenerationAndKeyDerivation() throws {
+        let srp = SRPClient()
+        let publicKeyA = srp.startAuthentication()
+        XCTAssertEqual(publicKeyA.count, 256)
+        XCTAssertFalse(publicKeyA.allSatisfy { $0 == 0 })
+
+        let salt = Data(repeating: 0x5A, count: 16)
+        let s2kKey = srp.derivePasswordKey(
+            password: "MySecurePassword123!",
+            salt: salt,
+            iterations: 100,
+            isS2KFO: false
+        )
+        XCTAssertNotNil(s2kKey)
+        XCTAssertEqual(s2kKey?.count, 32)
+
+        let s2kFOKey = srp.derivePasswordKey(
+            password: "MySecurePassword123!",
+            salt: salt,
+            iterations: 100,
+            isS2KFO: true
+        )
+        XCTAssertNotNil(s2kFOKey)
+        XCTAssertEqual(s2kFOKey?.count, 32)
+        XCTAssertNotEqual(s2kKey, s2kFOKey)
+    }
+
+    func testSRPChallengeProcessing() throws {
+        let client = SRPClient()
+        let clientA = client.startAuthentication()
+        XCTAssertEqual(clientA.count, 256)
+
+        let salt = Data(repeating: 0x12, count: 16)
+        let dummyServerB = Data(repeating: 0x34, count: 256)
+
+        guard let passwordKey = client.derivePasswordKey(
+            password: "SuperSecretPassword!",
+            salt: salt,
+            iterations: 50,
+            isS2KFO: false
+        ) else {
+            XCTFail("Failed to derive password key")
+            return
+        }
+
+        let proofM1 = client.processChallenge(
+            username: "tester@example.com",
+            derivedPasswordKey: passwordKey,
+            salt: salt,
+            serverPublicKey: dummyServerB
         )
 
-        let session = try await auth.submit2FACode(code: "123456", context: context)
-        XCTAssertEqual(session.dsid, "12345678")
-        XCTAssertFalse(session.authToken.isEmpty)
+        XCTAssertNotNil(proofM1)
+        XCTAssertEqual(proofM1?.count, 32)
+        XCTAssertNotNil(client.sessionKey())
+        XCTAssertEqual(client.sessionKey()?.count, 32)
+    }
+
+    func testGSAClientClientDictionary() throws {
+        let client = GSAClient()
+        let anisette = AnisetteData(
+            machineID: "mach-1",
+            oneTimePassword: "otp-1",
+            localUserID: "user-1",
+            routingInfo: "17106176",
+            deviceID: "dev-1"
+        )
+
+        let dict = client.makeClientDictionary(anisette: anisette)
+        XCTAssertEqual(dict["X-Apple-I-MD-M"] as? String, "mach-1")
+        XCTAssertEqual(dict["X-Apple-I-MD"] as? String, "otp-1")
+        XCTAssertEqual(dict["X-Apple-I-MD-LU"] as? String, "user-1")
+        XCTAssertEqual(dict["bootstrap"] as? Bool, true)
     }
 
     func testAppleAuthEmptyCredentialsThrow() async {

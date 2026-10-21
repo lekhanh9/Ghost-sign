@@ -17,12 +17,15 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../ghost-code"),
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
     ],
     targets: [
         .target(
             name: "GhostSign",
             dependencies: [
                 .product(name: "GhostCode", package: "ghost-code"),
+                .product(name: "Crypto", package: "swift-crypto"),
+                .product(name: "_CryptoExtras", package: "swift-crypto"),
             ]
         ),
         .testTarget(
