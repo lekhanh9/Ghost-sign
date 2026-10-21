@@ -635,7 +635,7 @@ enum ASN1DER {
             length = Int(firstLen)
         } else {
             let numBytes = Int(firstLen & 0x7F)
-            guard numBytes > 0, numBytes <= 4, current + numBytes <= data.count else { return nil }
+            guard numBytes > 0, numBytes <= 4, numBytes <= data.count - current else { return nil }
             var len = 0
             for i in 0..<numBytes {
                 len = (len << 8) | Int(data[base + current + i])
@@ -644,7 +644,7 @@ enum ASN1DER {
             length = len
         }
 
-        guard current + length <= data.count else { return nil }
+        guard length <= data.count - current else { return nil }
         let startIdx = base + current
         let endIdx = startIdx + length
         let value = data.subdata(in: startIdx..<endIdx)

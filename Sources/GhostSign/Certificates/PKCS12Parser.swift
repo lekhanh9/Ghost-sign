@@ -209,7 +209,7 @@ public enum PKCS12Parser {
             headerLength = offset - data.startIndex
         } else {
             let numBytes = Int(lengthByte & 0x7F)
-            guard numBytes > 0, numBytes <= 4, offset + numBytes <= data.endIndex else { return nil }
+            guard numBytes > 0, numBytes <= 4, numBytes <= data.endIndex - offset else { return nil }
             var len = 0
             for i in 0..<numBytes {
                 len = (len << 8) | Int(data[offset + i])
@@ -219,7 +219,7 @@ public enum PKCS12Parser {
             headerLength = offset - data.startIndex
         }
 
-        guard offset + length <= data.endIndex else { return nil }
+        guard length <= data.endIndex - offset else { return nil }
         let value = data[offset..<(offset + length)]
         let rawDER = data[data.startIndex..<(offset + length)]
         return ASN1TLV(tag: tag, length: length, headerLength: headerLength, value: Data(value), rawDER: Data(rawDER))
