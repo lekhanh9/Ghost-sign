@@ -8,6 +8,7 @@
 
 import Foundation
 import GhostCode
+import Crypto
 
 /// Top-level signing bridge function using in-memory raw Certificate & Private Key data.
 public func signBundleWithRawIdentity(
@@ -41,6 +42,28 @@ public func signBundleWithCertificate(
         ipaPath: ipaPath,
         p12Path: p12Path,
         password: password,
+        provisionPath: provisionPath,
+        outputPath: outputPath
+    )
+}
+
+/// Top-level signing bridge function using stored identity from FileStorageManager (SideStore sandbox model).
+public func signBundleWithStoredIdentity(
+    ipaPath: URL,
+    p12FileURL: URL,
+    password: String = "",
+    storageManager: FileStorageManager = FileStorageManager(),
+    decryptionKey: SymmetricKey? = nil,
+    provisionPath: URL,
+    outputPath: URL
+) throws {
+    let bridge = BridgeSigner()
+    try bridge.signBundleWithStoredIdentity(
+        ipaPath: ipaPath,
+        p12FileURL: p12FileURL,
+        password: password,
+        storageManager: storageManager,
+        decryptionKey: decryptionKey,
         provisionPath: provisionPath,
         outputPath: outputPath
     )
@@ -100,6 +123,44 @@ public final class BridgeSigner {
             ipaPath: ipaPath,
             certificateDER: identity.certificateDER,
             privateKeyDER: identity.privateKeyDER,
+            provisionPath: provisionPath,
+            outputPath: outputPath
+        )
+    }
+
+    /// Signs an application bundle using an encrypted/stored identity from sandbox file storage (No Keychain).
+    public func signBundleWithStoredIdentity(
+        ipaPath: URL,
+        p12FileURL: URL,
+        password: String = "",
+        storageManager: FileStorageManager = FileStorageManager(),
+        decryptionKey: SymmetricKey? = nil,
+        provisionPath: URL,
+        outputPath: URL
+    ) throws {
+        // MARK: - Step 1: Read and decrypt from sandbox storage in RAM
+        let rawIdentity: RawIdentity
+        let ext = p12FileURL.pathExtension.lowercased()
+        if ext == "pem" {
+            let data = try storageManager.loadIdentity(from: p12FileURL, decryptionKey: decryptionKey)
+            guard let pemString = String(data: data, encoding: .utf8),
+                  let identity = RawIdentity.parsePEMIdentity(pemString: pemString) else {
+                throw FileStorageError.invalidData("Could not parse PEM identity from \(p12FileURL.lastPathComponent)")
+            }
+            rawIdentity = identity
+        } else {
+            rawIdentity = try storageManager.loadRawIdentity(
+                from: p12FileURL,
+                password: password,
+                decryptionKey: decryptionKey
+            )
+        }
+
+        // MARK: - Step 2: Pass raw Data directly to Ghost-Code Mach-O signer
+        try signBundleWithRawIdentity(
+            ipaPath: ipaPath,
+            certificateDER: rawIdentity.certificateDER,
+            privateKeyDER: rawIdentity.privateKeyDER,
             provisionPath: provisionPath,
             outputPath: outputPath
         )

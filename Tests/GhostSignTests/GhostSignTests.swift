@@ -213,4 +213,110 @@ final class GhostSignTests: XCTestCase {
             XCTFail("Unexpected error: \(error)")
         }
     }
+
+    func testFileStorageManagerSaveAndLoadUnencryptedIdentity() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let storage = FileStorageManager(baseDirectory: tempDir)
+
+        let mockP12 = Data([0x30, 0x82, 0x01, 0x23, 0x45, 0x67, 0x89])
+        let savedURL = try storage.saveIdentity(p12Data: mockP12, filename: "test.p12")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: savedURL.path))
+
+        let loaded = try storage.loadIdentity(from: savedURL)
+        XCTAssertEqual(loaded, mockP12)
+
+        try storage.clearAll()
+    }
+
+    func testFileStorageManagerAESGCMEncryptionAtRest() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let storage = FileStorageManager(baseDirectory: tempDir)
+
+        let mockP12 = Data("Sensitive PKCS#12 Identity Data for Sideloading".utf8)
+        let key = FileStorageManager.generateKey()
+
+        let savedURL = try storage.saveIdentity(p12Data: mockP12, filename: "encrypted_identity.p12", encryptionKey: key)
+
+        // Raw file on disk must be encrypted and NOT equal to plain text
+        let rawDiskData = try Data(contentsOf: savedURL)
+        XCTAssertNotEqual(rawDiskData, mockP12)
+
+        // Decryption with the proper key must recover original data
+        let decrypted = try storage.loadIdentity(from: savedURL, decryptionKey: key)
+        XCTAssertEqual(decrypted, mockP12)
+
+        // Decryption with a wrong key must throw
+        let wrongKey = FileStorageManager.generateKey()
+        XCTAssertThrowsError(try storage.loadIdentity(from: savedURL, decryptionKey: wrongKey))
+
+        try storage.clearAll()
+    }
+
+    func testFileStorageManagerProvisioningProfileSaveAndLoad() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let storage = FileStorageManager(baseDirectory: tempDir)
+
+        let mockProfile = Data("<?xml version=\"1.0\" encoding=\"UTF-8\"?><plist><dict><key>AppIDName</key><string>GhostApp</string></dict></plist>".utf8)
+        let key = FileStorageManager.deriveKey(from: "my-passphrase-123")
+
+        let savedURL = try storage.saveProvisioningProfile(data: mockProfile, filename: "test.mobileprovision", encryptionKey: key)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: savedURL.path))
+
+        let loaded = try storage.loadProvisioningProfile(from: savedURL, decryptionKey: key)
+        XCTAssertEqual(loaded, mockProfile)
+
+        let profiles = try storage.listStoredProfiles()
+        XCTAssertEqual(profiles.count, 1)
+        XCTAssertEqual(profiles.first?.lastPathComponent, "test.mobileprovision")
+
+        try storage.clearAll()
+    }
+
+    func testFileStorageManagerPEMIdentityExtraction() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let storage = FileStorageManager(baseDirectory: tempDir)
+
+        let rawCert = Data([0x30, 0x05, 0x02, 0x01, 0x01, 0x00, 0x00])
+        let rawKey = Data([0x30, 0x05, 0x02, 0x01, 0x00, 0x00, 0x00])
+        let identity = RawIdentity(certificateDER: rawCert, privateKeyDER: rawKey)
+
+        let key = FileStorageManager.generateKey()
+        let pemURL = try storage.saveRawIdentityAsPEM(identity: identity, filename: "identity.pem", encryptionKey: key)
+
+        let loadedData = try storage.loadIdentity(from: pemURL, decryptionKey: key)
+        guard let pemString = String(data: loadedData, encoding: .utf8) else {
+            XCTFail("Failed to convert decrypted data to UTF-8")
+            return
+        }
+
+        let parsed = RawIdentity.parsePEMIdentity(pemString: pemString)
+        XCTAssertNotNil(parsed)
+        XCTAssertEqual(parsed?.certificateDER, rawCert)
+        XCTAssertEqual(parsed?.privateKeyDER, rawKey)
+
+        try storage.clearAll()
+    }
+
+    func testFileStorageManagerListingAndDeletion() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let storage = FileStorageManager(baseDirectory: tempDir)
+
+        let p12URL = try storage.saveIdentity(p12Data: Data([0x01, 0x02]), filename: "app1.p12")
+        let profURL = try storage.saveProvisioningProfile(data: Data([0x03, 0x04]), filename: "app1.mobileprovision")
+
+        var identities = try storage.listStoredIdentities()
+        var profiles = try storage.listStoredProfiles()
+        XCTAssertEqual(identities.count, 1)
+        XCTAssertEqual(profiles.count, 1)
+
+        try storage.deleteItem(at: p12URL)
+        identities = try storage.listStoredIdentities()
+        XCTAssertEqual(identities.count, 0)
+
+        try storage.deleteItem(at: profURL)
+        profiles = try storage.listStoredProfiles()
+        XCTAssertEqual(profiles.count, 0)
+
+        try storage.clearAll()
+    }
 }

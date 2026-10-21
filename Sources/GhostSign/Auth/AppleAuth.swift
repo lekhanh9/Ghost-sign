@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Crypto
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
@@ -189,5 +190,35 @@ public final class AppleAuth: Sendable {
     /// Conforms to strict architecture directive: In-memory Data only, never stored in Keychain.
     public func fetchCertificate(p12Data: Data, password: String = "") throws -> RawIdentity {
         return try PKCS12Parser.extract(p12Data: p12Data, password: password)
+    }
+
+    /// Saves fetched certificate & private key (.p12) into sandbox FileStorageManager without Apple Keychain.
+    @discardableResult
+    public func saveFetchedCertificate(
+        p12Data: Data,
+        filename: String = "identity.p12",
+        storageManager: FileStorageManager = FileStorageManager(),
+        encryptionKey: SymmetricKey? = nil
+    ) throws -> URL {
+        return try storageManager.saveIdentity(
+            p12Data: p12Data,
+            filename: filename,
+            encryptionKey: encryptionKey
+        )
+    }
+
+    /// Saves provisioning profile into sandbox FileStorageManager.
+    @discardableResult
+    public func saveProvisioningProfile(
+        profileData: Data,
+        filename: String = "embedded.mobileprovision",
+        storageManager: FileStorageManager = FileStorageManager(),
+        encryptionKey: SymmetricKey? = nil
+    ) throws -> URL {
+        return try storageManager.saveProvisioningProfile(
+            data: profileData,
+            filename: filename,
+            encryptionKey: encryptionKey
+        )
     }
 }
