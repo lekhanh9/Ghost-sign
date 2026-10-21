@@ -1,6 +1,15 @@
 {
   "pins" : [
     {
+      "identity" : "ghost-code",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/lekhanh9/ghost-code.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "2f10622344b060d4af051fa70d7da1896aa12790"
+      }
+    },
+    {
       "identity" : "swift-asn1",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-asn1.git",
