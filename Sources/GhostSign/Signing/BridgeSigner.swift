@@ -3,12 +3,32 @@
 //  GhostSign
 //
 //  Bridges Ghost-Sign (Apple Auth & Certificate Management) with Ghost-Code (Mach-O Signing Engine).
+//  STRICT ARCHITECTURE DIRECTIVE: Uses In-Memory Raw Crypto (Data). Never touches Apple Keychain.
 //
 
 import Foundation
 import GhostCode
 
-/// Top-level signing bridge function to sign an application bundle using an Apple Developer certificate.
+/// Top-level signing bridge function using in-memory raw Certificate & Private Key data.
+public func signBundleWithRawIdentity(
+    ipaPath: URL,
+    certificateDER: Data,
+    privateKeyDER: Data,
+    provisionPath: URL,
+    outputPath: URL
+) throws {
+    let bridge = BridgeSigner()
+    try bridge.signBundleWithRawIdentity(
+        ipaPath: ipaPath,
+        certificateDER: certificateDER,
+        privateKeyDER: privateKeyDER,
+        provisionPath: provisionPath,
+        outputPath: outputPath
+    )
+}
+
+/// Top-level signing bridge function to sign an application bundle using a .p12 identity.
+/// Decrypts .p12 in memory to extract raw Data without saving to Apple Keychain.
 public func signBundleWithCertificate(
     ipaPath: URL,
     p12Path: URL,
@@ -29,7 +49,41 @@ public func signBundleWithCertificate(
 public final class BridgeSigner {
     public init() {}
 
-    /// Signs an application bundle or extracted IPA using an Apple Developer Certificate and Provisioning Profile.
+    /// Signs an application bundle or extracted IPA using in-memory raw Certificate and Private Key Data (No Keychain).
+    public func signBundleWithRawIdentity(
+        ipaPath: URL,
+        certificateDER: Data,
+        privateKeyDER: Data,
+        provisionPath: URL,
+        outputPath: URL
+    ) throws {
+        // MARK: - Step 1: Provisioning Profile & Entitlements
+        var entitlements: [String: Any]? = nil
+        if let provisionData = try? Data(contentsOf: provisionPath) {
+            entitlements = GhostSigner.extractEntitlements(fromMobileProvisionData: provisionData)
+        }
+
+        // MARK: - Step 2: Invoke Ghost-Code Engine with Raw Data
+        // Passes raw Private Key and Certificate Data directly to Ghost-Code (No Keychain)
+        let signer = GhostSigner()
+        try signer.signBundle(
+            appURL: ipaPath,
+            provisioningProfileURL: provisionPath,
+            rawCertificate: certificateDER,
+            rawPrivateKey: privateKeyDER,
+            entitlements: entitlements
+        )
+
+        // MARK: - Step 3: Output Delivery
+        if outputPath != ipaPath && FileManager.default.fileExists(atPath: ipaPath.path) {
+            if FileManager.default.fileExists(atPath: outputPath.path) {
+                try? FileManager.default.removeItem(at: outputPath)
+            }
+            try FileManager.default.copyItem(at: ipaPath, to: outputPath)
+        }
+    }
+
+    /// Signs an application bundle using a .p12 archive by decrypting it in RAM (No Keychain).
     public func signBundleWithCertificate(
         ipaPath: URL,
         p12Path: URL,
@@ -37,35 +91,17 @@ public final class BridgeSigner {
         provisionPath: URL,
         outputPath: URL
     ) throws {
-        // MARK: - Step 1: Certificate & Identity Loading
-        // TODO: In subsequent steps, extract SecCertificate and SecKey from the .p12 identity
-        // using the supplied password (or retrieve from AppleAuth session).
-        // For now, certificate and private key references are mocked (nil for ad-hoc / test validation)
-        // to verify dependency integration with Ghost-Code.
+        // MARK: - Step 1: In-Memory PKCS#12 Decryption
+        let p12Data = try Data(contentsOf: p12Path)
+        let identity = try PKCS12Parser.extract(p12Data: p12Data, password: password)
 
-        // MARK: - Step 2: Provisioning Profile & Entitlements
-        var entitlements: [String: Any]? = nil
-        if let provisionData = try? Data(contentsOf: provisionPath) {
-            entitlements = GhostSigner.extractEntitlements(fromMobileProvisionData: provisionData)
-        }
-
-        // MARK: - Step 3: Invoke Ghost-Code Engine
-        // Call the Ghost-Code API to perform the full bundle sealing and binary code signing
-        let signer = GhostSigner()
-        try signer.signBundle(
-            appURL: ipaPath,
-            provisioningProfileURL: provisionPath,
-            cert: nil,
-            key: nil,
-            entitlements: entitlements
+        // MARK: - Step 2: Sign using raw in-memory identity
+        try signBundleWithRawIdentity(
+            ipaPath: ipaPath,
+            certificateDER: identity.certificateDER,
+            privateKeyDER: identity.privateKeyDER,
+            provisionPath: provisionPath,
+            outputPath: outputPath
         )
-
-        // MARK: - Step 4: Output Delivery
-        if outputPath != ipaPath && FileManager.default.fileExists(atPath: ipaPath.path) {
-            if FileManager.default.fileExists(atPath: outputPath.path) {
-                try? FileManager.default.removeItem(at: outputPath)
-            }
-            try FileManager.default.copyItem(at: ipaPath, to: outputPath)
-        }
     }
 }

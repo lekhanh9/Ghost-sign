@@ -184,4 +184,10 @@ public final class AppleAuth: Sendable {
             expirationDate: appToken.expirationDate
         )
     }
+
+    /// Extracts the raw Private Key and Certificate into memory (Raw Crypto) without saving to Apple Keychain.
+    /// Conforms to strict architecture directive: In-memory Data only, never stored in Keychain.
+    public func fetchCertificate(p12Data: Data, password: String = "") throws -> RawIdentity {
+        return try PKCS12Parser.extract(p12Data: p12Data, password: password)
+    }
 }

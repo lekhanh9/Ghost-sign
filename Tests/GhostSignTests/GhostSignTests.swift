@@ -154,6 +154,51 @@ final class GhostSignTests: XCTestCase {
         XCTAssertEqual(dict["bootstrap"] as? Bool, true)
     }
 
+    func testRawIdentityDerPemConversion() throws {
+        let rawCert = Data([0x30, 0x82, 0x01, 0x00, 0x02, 0x01, 0x01])
+        let rawKey = Data([0x30, 0x82, 0x02, 0x00, 0x02, 0x01, 0x00])
+
+        let certPEM = RawIdentity.derToPEM(der: rawCert, type: "CERTIFICATE")
+        XCTAssertTrue(certPEM.contains("-----BEGIN CERTIFICATE-----"))
+        XCTAssertTrue(certPEM.contains("-----END CERTIFICATE-----"))
+
+        let roundtripCert = RawIdentity.pemToDER(pem: certPEM)
+        XCTAssertEqual(roundtripCert, rawCert)
+
+        let identity = RawIdentity(
+            certificateDER: rawCert,
+            privateKeyDER: rawKey,
+            certificatePEM: certPEM,
+            privateKeyPEM: RawIdentity.derToPEM(der: rawKey, type: "RSA PRIVATE KEY")
+        )
+        XCTAssertEqual(identity.certificateDER, rawCert)
+        XCTAssertEqual(identity.privateKeyDER, rawKey)
+    }
+
+    func testFetchCertificateRawInMemoryExtraction() throws {
+        let auth = AppleAuth()
+        let rawCert = Data([0x30, 0x05, 0x02, 0x01, 0x01, 0x00, 0x00])
+        let rawKey = Data([0x30, 0x05, 0x02, 0x01, 0x00, 0x00, 0x00])
+
+        let pemPayload = """
+        -----BEGIN CERTIFICATE-----
+        MAUCAQEAAA==
+        -----END CERTIFICATE-----
+        -----BEGIN RSA PRIVATE KEY-----
+        MAUCAQAAAA==
+        -----END RSA PRIVATE KEY-----
+        """
+
+        let identity = try auth.fetchCertificate(p12Data: Data(pemPayload.utf8), password: "")
+        XCTAssertEqual(identity.certificateDER, rawCert)
+        XCTAssertEqual(identity.privateKeyDER, rawKey)
+    }
+
+    func testBridgeSignerWithRawIdentity() throws {
+        let bridge = BridgeSigner()
+        XCTAssertNotNil(bridge)
+    }
+
     func testAppleAuthEmptyCredentialsThrow() async {
         let auth = AppleAuth()
         do {
