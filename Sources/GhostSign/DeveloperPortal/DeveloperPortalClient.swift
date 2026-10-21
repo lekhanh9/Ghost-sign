@@ -251,6 +251,27 @@ public final class DeveloperPortalClient: @unchecked Sendable {
         return cert
     }
 
+    /// Submits a PKCS#10 Certificate Signing Request (CSR) DER bytes directly, converting to PEM internally.
+    public func addCertificate(csrDER: Data, teamId: String) async throws -> DeveloperCertificate {
+        let pem = PEMDERCodec.derToPEM(der: csrDER, type: .certificateRequest)
+        return try await addCertificate(csrPEM: pem, teamId: teamId)
+    }
+
+    /// Convenience alias for addCertificate(csrPEM:teamId:).
+    public func submitDevelopmentCSR(teamId: String, csrPEM: String) async throws -> DeveloperCertificate {
+        try await addCertificate(csrPEM: csrPEM, teamId: teamId)
+    }
+
+    /// Convenience alias for addCertificate(csrDER:teamId:).
+    public func submitDevelopmentCSR(teamId: String, csrDER: Data) async throws -> DeveloperCertificate {
+        try await addCertificate(csrDER: csrDER, teamId: teamId)
+    }
+
+    /// Queries active development certificates for the developer team (alias for listCertificates).
+    public func listAllDevelopmentCerts(teamId: String) async throws -> [DeveloperCertificate] {
+        try await listCertificates(teamId: teamId)
+    }
+
     /// Queries all provisioning profiles registered under the developer team.
     public func listProvisioningProfiles(teamId: String) async throws -> [DeveloperProvisioningProfile] {
         let response: ListProvisioningProfilesResponse = try await performRequest(
@@ -337,5 +358,55 @@ public final class DeveloperPortalClient: @unchecked Sendable {
             throw DeveloperPortalError.profileNotFound
         }
         return profile
+    }
+
+    /// Deletes an App ID bundle identifier from the developer team.
+    @discardableResult
+    public func deleteAppId(appIdId: String, teamId: String) async throws -> Bool {
+        let _: DeveloperPortalStatusResponse = try await performRequest(
+            action: "ios/deleteAppId.action",
+            parameters: ["appIdId": appIdId],
+            teamId: teamId,
+            context: "appId"
+        )
+        return true
+    }
+
+    /// Removes a registered hardware device from the developer team.
+    @discardableResult
+    public func deleteDevice(deviceId: String, teamId: String) async throws -> Bool {
+        let _: DeveloperPortalStatusResponse = try await performRequest(
+            action: "ios/deleteDevice.action",
+            parameters: ["deviceId": deviceId],
+            teamId: teamId,
+            context: "device"
+        )
+        return true
+    }
+
+    /// Downloads a specific manual provisioning profile by its profile ID.
+    public func downloadProvisioningProfile(profileId: String, teamId: String) async throws -> DeveloperProvisioningProfile {
+        let response: ProvisioningProfileResponse = try await performRequest(
+            action: "ios/downloadProvisioningProfile.action",
+            parameters: ["provisioningProfileId": profileId],
+            teamId: teamId,
+            context: "profile"
+        )
+        guard let profile = response.provisioningProfile else {
+            throw DeveloperPortalError.profileNotFound
+        }
+        return profile
+    }
+
+    /// Deletes a provisioning profile from the developer portal.
+    @discardableResult
+    public func deleteProvisioningProfile(profileId: String, teamId: String) async throws -> Bool {
+        let _: DeveloperPortalStatusResponse = try await performRequest(
+            action: "ios/deleteProvisioningProfile.action",
+            parameters: ["provisioningProfileId": profileId],
+            teamId: teamId,
+            context: "profile"
+        )
+        return true
     }
 }

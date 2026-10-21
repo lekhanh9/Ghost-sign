@@ -177,6 +177,44 @@ final class DeveloperPortalClientTests: XCTestCase {
         XCTAssertTrue(devices[0].isActive)
     }
 
+    func testAddDeviceSuccess() async throws {
+        let xmlPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>resultCode</key>
+            <integer>0</integer>
+            <key>device</key>
+            <dict>
+                <key>deviceId</key>
+                <string>DEV999</string>
+                <key>deviceNumber</key>
+                <string>00008101-001234567890ABCD</string>
+                <key>name</key>
+                <string>Test iPhone</string>
+                <key>deviceClass</key>
+                <string>iphone</string>
+                <key>status</key>
+                <string>c</string>
+            </dict>
+        </dict>
+        </plist>
+        """
+
+        let client = makeClient { request in
+            XCTAssertTrue(request.url?.absoluteString.contains("ios/addDevice.action") == true)
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data(xmlPlist.utf8))
+        }
+
+        let dev = try await client.addDevice(name: "Test iPhone", udid: "00008101-001234567890ABCD", teamId: "TEAM123456")
+        XCTAssertEqual(dev.deviceId, "DEV999")
+        XCTAssertEqual(dev.deviceNumber, "00008101-001234567890ABCD")
+        XCTAssertEqual(dev.name, "Test iPhone")
+        XCTAssertTrue(dev.isActive)
+    }
+
     func testAddDeviceAlreadyRegistered() async throws {
         let xmlPlist = """
         <?xml version="1.0" encoding="UTF-8"?>
@@ -202,6 +240,55 @@ final class DeveloperPortalClientTests: XCTestCase {
         } catch let error as DeveloperPortalError {
             XCTAssertEqual(error, .deviceAlreadyRegistered)
         }
+    }
+
+    func testAddDeviceMaximumLimitReached() async throws {
+        let xmlPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>resultCode</key>
+            <integer>35</integer>
+            <key>userString</key>
+            <string>You have reached the maximum device limit for this team.</string>
+        </dict>
+        </plist>
+        """
+
+        let client = makeClient { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data(xmlPlist.utf8))
+        }
+
+        do {
+            _ = try await client.addDevice(name: "Test iPhone", udid: "00008101-001234567890ABCD", teamId: "TEAM123456")
+            XCTFail("Expected maximumDevicesReached error")
+        } catch let error as DeveloperPortalError {
+            XCTAssertEqual(error, .maximumDevicesReached)
+        }
+    }
+
+    func testDeleteDeviceSuccess() async throws {
+        let xmlPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>resultCode</key>
+            <integer>0</integer>
+        </dict>
+        </plist>
+        """
+
+        let client = makeClient { request in
+            XCTAssertTrue(request.url?.absoluteString.contains("ios/deleteDevice.action") == true)
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data(xmlPlist.utf8))
+        }
+
+        let deleted = try await client.deleteDevice(deviceId: "DEV123", teamId: "TEAM123456")
+        XCTAssertTrue(deleted)
     }
 
     // MARK: - Tests: App IDs
@@ -244,6 +331,70 @@ final class DeveloperPortalClientTests: XCTestCase {
         XCTAssertEqual(appIds[0].appIdId, "APPID789")
     }
 
+    func testAddAppIdSuccess() async throws {
+        let xmlPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>resultCode</key>
+            <integer>0</integer>
+            <key>appId</key>
+            <dict>
+                <key>appIdId</key>
+                <string>APPID999</string>
+                <key>identifier</key>
+                <string>com.example.newapp</string>
+                <key>name</key>
+                <string>New App</string>
+                <key>prefix</key>
+                <string>TEAM123456</string>
+                <key>isWildCard</key>
+                <false/>
+            </dict>
+        </dict>
+        </plist>
+        """
+
+        let client = makeClient { request in
+            XCTAssertTrue(request.url?.absoluteString.contains("ios/addAppId.action") == true)
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data(xmlPlist.utf8))
+        }
+
+        let appId = try await client.addAppId(name: "New App", identifier: "com.example.newapp", teamId: "TEAM123456")
+        XCTAssertEqual(appId.appIdId, "APPID999")
+        XCTAssertEqual(appId.identifier, "com.example.newapp")
+        XCTAssertEqual(appId.name, "New App")
+    }
+
+    func testAddAppIdBundleIdentifierUnavailable() async throws {
+        let xmlPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>resultCode</key>
+            <integer>35</integer>
+            <key>userString</key>
+            <string>An App ID with Identifier 'com.test.taken' is not available.</string>
+        </dict>
+        </plist>
+        """
+
+        let client = makeClient { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data(xmlPlist.utf8))
+        }
+
+        do {
+            _ = try await client.addAppId(name: "Taken", identifier: "com.test.taken", teamId: "TEAM123456")
+            XCTFail("Expected bundleIdentifierUnavailable error")
+        } catch let error as DeveloperPortalError {
+            XCTAssertEqual(error, .bundleIdentifierUnavailable)
+        }
+    }
+
     func testAddAppIdMaximumLimitReached() async throws {
         let xmlPlist = """
         <?xml version="1.0" encoding="UTF-8"?>
@@ -269,6 +420,28 @@ final class DeveloperPortalClientTests: XCTestCase {
         } catch let error as DeveloperPortalError {
             XCTAssertEqual(error, .maximumAppIDLimitReached)
         }
+    }
+
+    func testDeleteAppIdSuccess() async throws {
+        let xmlPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>resultCode</key>
+            <integer>0</integer>
+        </dict>
+        </plist>
+        """
+
+        let client = makeClient { request in
+            XCTAssertTrue(request.url?.absoluteString.contains("ios/deleteAppId.action") == true)
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data(xmlPlist.utf8))
+        }
+
+        let deleted = try await client.deleteAppId(appIdId: "APPID789", teamId: "TEAM123456")
+        XCTAssertTrue(deleted)
     }
 
     // MARK: - Tests: Certificates (Raw In-Memory Extraction)
@@ -313,6 +486,146 @@ final class DeveloperPortalClientTests: XCTestCase {
         XCTAssertEqual(cert.certContent, fakeCertDER)
         // Zero Keychain involvement: raw DER data is preserved directly in memory
         XCTAssertEqual(cert.certContent.count, fakeCertDER.count)
+    }
+
+    func testListCertificatesAndAliasSuccess() async throws {
+        let fakeCertDER = Data([0x30, 0x82, 0x01, 0x22, 0x02, 0x01, 0x01])
+        let base64Cert = fakeCertDER.base64EncodedString()
+
+        let xmlPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>resultCode</key>
+            <integer>0</integer>
+            <key>certificates</key>
+            <array>
+                <dict>
+                    <key>certificateId</key>
+                    <string>CERT_LIST_1</string>
+                    <key>name</key>
+                    <string>Apple Development: Jane Doe</string>
+                    <key>status</key>
+                    <string>active</string>
+                    <key>serialNumber</key>
+                    <string>A1B2C3D4E5</string>
+                    <key>certContent</key>
+                    <data>\(base64Cert)</data>
+                </dict>
+            </array>
+        </dict>
+        </plist>
+        """
+
+        let client = makeClient { request in
+            XCTAssertTrue(request.url?.absoluteString.contains("ios/listAllDevelopmentCerts.action") == true)
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data(xmlPlist.utf8))
+        }
+
+        let certs = try await client.listCertificates(teamId: "TEAM123456")
+        XCTAssertEqual(certs.count, 1)
+        XCTAssertEqual(certs[0].certificateId, "CERT_LIST_1")
+        XCTAssertEqual(certs[0].serialNumber, "A1B2C3D4E5")
+        XCTAssertEqual(certs[0].certContent, fakeCertDER)
+
+        let certsAlias = try await client.listAllDevelopmentCerts(teamId: "TEAM123456")
+        XCTAssertEqual(certsAlias.count, 1)
+        XCTAssertEqual(certsAlias[0].certificateId, "CERT_LIST_1")
+    }
+
+    func testSubmitDevelopmentCSROverloads() async throws {
+        let fakeCertDER = Data([0x30, 0x82, 0x01, 0x11, 0x02, 0x01, 0x02])
+        let base64Cert = fakeCertDER.base64EncodedString()
+
+        let xmlPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>resultCode</key>
+            <integer>0</integer>
+            <key>certRequest</key>
+            <dict>
+                <key>certificateId</key>
+                <string>CERT_OVERLOAD</string>
+                <key>name</key>
+                <string>Apple Development</string>
+                <key>status</key>
+                <string>active</string>
+                <key>certContent</key>
+                <data>\(base64Cert)</data>
+            </dict>
+        </dict>
+        </plist>
+        """
+
+        let client = makeClient { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data(xmlPlist.utf8))
+        }
+
+        let rawDER = Data([0x30, 0x10, 0x02, 0x01, 0x00])
+        let cert1 = try await client.submitDevelopmentCSR(teamId: "TEAM123456", csrDER: rawDER)
+        XCTAssertEqual(cert1.certificateId, "CERT_OVERLOAD")
+
+        let cert2 = try await client.submitDevelopmentCSR(teamId: "TEAM123456", csrPEM: "-----BEGIN CERTIFICATE REQUEST-----\nMOCK\n-----END CERTIFICATE REQUEST-----")
+        XCTAssertEqual(cert2.certificateId, "CERT_OVERLOAD")
+    }
+
+    func testAddCertificateInvalidCSR() async throws {
+        let xmlPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>resultCode</key>
+            <integer>3250</integer>
+            <key>userString</key>
+            <string>The certificate signing request is invalid.</string>
+        </dict>
+        </plist>
+        """
+
+        let client = makeClient { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data(xmlPlist.utf8))
+        }
+
+        do {
+            _ = try await client.addCertificate(csrPEM: "INVALID", teamId: "TEAM123456")
+            XCTFail("Expected invalidCertificateRequest")
+        } catch let error as DeveloperPortalError {
+            XCTAssertEqual(error, .invalidCertificateRequest)
+        }
+    }
+
+    func testAddCertificateMaximumReached() async throws {
+        let xmlPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>resultCode</key>
+            <integer>7460</integer>
+            <key>userString</key>
+            <string>You already have a current iOS Development certificate or a pending certificate request.</string>
+        </dict>
+        </plist>
+        """
+
+        let client = makeClient { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data(xmlPlist.utf8))
+        }
+
+        do {
+            _ = try await client.addCertificate(csrPEM: "MOCK", teamId: "TEAM123456")
+            XCTFail("Expected maximumCertificatesReached")
+        } catch let error as DeveloperPortalError {
+            XCTAssertEqual(error, .maximumCertificatesReached)
+        }
     }
 
     // MARK: - Tests: Provisioning Profiles (Raw In-Memory Extraction)
@@ -424,6 +737,294 @@ final class DeveloperPortalClientTests: XCTestCase {
         let profile = try await client.downloadTeamProvisioningProfile(appIdId: "APPID789", teamId: "TEAM123456")
         XCTAssertEqual(profile.provisioningProfileId, "TEAMPROF789")
         XCTAssertEqual(profile.encodedProfile, fakeProfileData)
+    }
+
+    func testListProvisioningProfilesSuccess() async throws {
+        let fakeProfileData = Data("Fake Mobileprovision List Data".utf8)
+        let base64Profile = fakeProfileData.base64EncodedString()
+
+        let xmlPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>resultCode</key>
+            <integer>0</integer>
+            <key>provisioningProfiles</key>
+            <array>
+                <dict>
+                    <key>provisioningProfileId</key>
+                    <string>LISTPROF123</string>
+                    <key>name</key>
+                    <string>App Development Profile</string>
+                    <key>status</key>
+                    <string>active</string>
+                    <key>encodedProfile</key>
+                    <data>\(base64Profile)</data>
+                </dict>
+            </array>
+        </dict>
+        </plist>
+        """
+
+        let client = makeClient { request in
+            XCTAssertTrue(request.url?.absoluteString.contains("ios/listProvisioningProfiles.action") == true)
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data(xmlPlist.utf8))
+        }
+
+        let profiles = try await client.listProvisioningProfiles(teamId: "TEAM123456")
+        XCTAssertEqual(profiles.count, 1)
+        XCTAssertEqual(profiles[0].provisioningProfileId, "LISTPROF123")
+        XCTAssertEqual(profiles[0].name, "App Development Profile")
+        XCTAssertEqual(profiles[0].encodedProfile, fakeProfileData)
+    }
+
+    func testDownloadManualProvisioningProfileSuccess() async throws {
+        let fakeProfileData = Data("Fake Manual Mobileprovision".utf8)
+        let base64Profile = fakeProfileData.base64EncodedString()
+
+        let xmlPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>resultCode</key>
+            <integer>0</integer>
+            <key>provisioningProfile</key>
+            <dict>
+                <key>provisioningProfileId</key>
+                <string>MANUALPROF123</string>
+                <key>name</key>
+                <string>Manual Profile</string>
+                <key>status</key>
+                <string>active</string>
+                <key>encodedProfile</key>
+                <data>\(base64Profile)</data>
+            </dict>
+        </dict>
+        </plist>
+        """
+
+        let client = makeClient { request in
+            XCTAssertTrue(request.url?.absoluteString.contains("ios/downloadProvisioningProfile.action") == true)
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data(xmlPlist.utf8))
+        }
+
+        let profile = try await client.downloadProvisioningProfile(profileId: "MANUALPROF123", teamId: "TEAM123456")
+        XCTAssertEqual(profile.provisioningProfileId, "MANUALPROF123")
+        XCTAssertEqual(profile.encodedProfile, fakeProfileData)
+    }
+
+    func testDeleteProvisioningProfileSuccess() async throws {
+        let xmlPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>resultCode</key>
+            <integer>0</integer>
+        </dict>
+        </plist>
+        """
+
+        let client = makeClient { request in
+            XCTAssertTrue(request.url?.absoluteString.contains("ios/deleteProvisioningProfile.action") == true)
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data(xmlPlist.utf8))
+        }
+
+        let deleted = try await client.deleteProvisioningProfile(profileId: "PROF456", teamId: "TEAM123456")
+        XCTAssertTrue(deleted)
+    }
+
+    func testDownloadTeamProvisioningProfileNotFound() async throws {
+        let xmlPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>resultCode</key>
+            <integer>8201</integer>
+            <key>userString</key>
+            <string>The profile could not be found for App ID.</string>
+        </dict>
+        </plist>
+        """
+
+        let client = makeClient { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data(xmlPlist.utf8))
+        }
+
+        do {
+            _ = try await client.downloadTeamProvisioningProfile(appIdId: "APPID789", teamId: "TEAM123456")
+            XCTFail("Expected profileNotFound error")
+        } catch let error as DeveloperPortalError {
+            XCTAssertEqual(error, .profileNotFound)
+        }
+    }
+
+    func testCreateProvisioningProfileResolvingDotBundleIdAndDevices() async throws {
+        let fakeProfileData = Data("Fake Resolved Profile".utf8)
+        let base64Profile = fakeProfileData.base64EncodedString()
+
+        let appIdsPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>resultCode</key>
+            <integer>0</integer>
+            <key>appIds</key>
+            <array>
+                <dict>
+                    <key>appIdId</key>
+                    <string>RESOLVED_APPID_123</string>
+                    <key>identifier</key>
+                    <string>com.example.dotapp</string>
+                    <key>name</key>
+                    <string>Dot App</string>
+                </dict>
+            </array>
+        </dict>
+        </plist>
+        """
+
+        let devicesPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>resultCode</key>
+            <integer>0</integer>
+            <key>devices</key>
+            <array>
+                <dict>
+                    <key>deviceId</key>
+                    <string>RESOLVED_DEV_456</string>
+                    <key>deviceNumber</key>
+                    <string>00008101-UDID999</string>
+                    <key>name</key>
+                    <string>iPhone Test</string>
+                </dict>
+            </array>
+        </dict>
+        </plist>
+        """
+
+        let profilePlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>resultCode</key>
+            <integer>0</integer>
+            <key>provisioningProfile</key>
+            <dict>
+                <key>provisioningProfileId</key>
+                <string>RESOLVED_PROF_789</string>
+                <key>name</key>
+                <string>Resolved Profile</string>
+                <key>status</key>
+                <string>active</string>
+                <key>encodedProfile</key>
+                <data>\(base64Profile)</data>
+            </dict>
+        </dict>
+        </plist>
+        """
+
+        let client = makeClient { request in
+            let url = request.url?.absoluteString ?? ""
+            if url.contains("ios/listAppIds.action") {
+                let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                return (response, Data(appIdsPlist.utf8))
+            } else if url.contains("ios/listDevices.action") {
+                let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                return (response, Data(devicesPlist.utf8))
+            } else if url.contains("ios/createProvisioningProfile.action") {
+                let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                return (response, Data(profilePlist.utf8))
+            }
+            let response = HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil, headerFields: nil)!
+            return (response, Data())
+        }
+
+        let profile = try await client.createProvisioningProfile(
+            name: "Resolved Profile",
+            bundleId: "com.example.dotapp",
+            certificateId: "CERT_123",
+            deviceUDIDs: ["00008101-UDID999"],
+            teamId: "TEAM123456"
+        )
+
+        XCTAssertEqual(profile.provisioningProfileId, "RESOLVED_PROF_789")
+        XCTAssertEqual(profile.name, "Resolved Profile")
+        XCTAssertEqual(profile.encodedProfile, fakeProfileData)
+    }
+
+    func testDeveloperPortalResultCodeMapperDirect() {
+        // Result code 3250 -> invalidCertificateRequest
+        XCTAssertEqual(DeveloperPortalResultCodeMapper.map(code: 3250, message: "Invalid CSR"), .invalidCertificateRequest)
+        // Result code 37 -> maximumAppIDLimitReached
+        XCTAssertEqual(DeveloperPortalResultCodeMapper.map(code: 37, message: "App ID limit"), .maximumAppIDLimitReached)
+        // Result code 7460 -> maximumCertificatesReached
+        XCTAssertEqual(DeveloperPortalResultCodeMapper.map(code: 7460, message: "Too many certs"), .maximumCertificatesReached)
+        // Result codes 8201, 9115 -> profileNotFound
+        XCTAssertEqual(DeveloperPortalResultCodeMapper.map(code: 8201, message: "Not found"), .profileNotFound)
+        XCTAssertEqual(DeveloperPortalResultCodeMapper.map(code: 9115, message: "Not found"), .profileNotFound)
+        // Result code -22406 -> unauthenticated
+        XCTAssertEqual(DeveloperPortalResultCodeMapper.map(code: -22406, message: "Session expired"), .unauthenticated("Session expired"))
+
+        // Overloaded code 35:
+        // Context device / limit
+        XCTAssertEqual(DeveloperPortalResultCodeMapper.map(code: 35, message: "Maximum devices registered", context: "device"), .maximumDevicesReached)
+        XCTAssertEqual(DeveloperPortalResultCodeMapper.map(code: 35, message: "Device already registered", context: "device"), .deviceAlreadyRegistered)
+        // Context cert
+        XCTAssertEqual(DeveloperPortalResultCodeMapper.map(code: 35, message: "Too many certs", context: "certificate"), .maximumCertificatesReached)
+        // Context appId
+        XCTAssertEqual(DeveloperPortalResultCodeMapper.map(code: 35, message: "Identifier unavailable", context: "appId"), .bundleIdentifierUnavailable)
+        // Default code 35
+        XCTAssertEqual(DeveloperPortalResultCodeMapper.map(code: 35, message: "Generic 35"), .portalError(code: 35, message: "Generic 35"))
+
+        // Unmapped generic code
+        XCTAssertEqual(DeveloperPortalResultCodeMapper.map(code: 99999, message: "Custom Apple error"), .portalError(code: 99999, message: "Custom Apple error"))
+    }
+
+    func testServerError500BadServerResponse() async throws {
+        let client = makeClient { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!
+            return (response, Data("Internal Server Error".utf8))
+        }
+
+        do {
+            _ = try await client.listTeams()
+            XCTFail("Expected network error on 500")
+        } catch let error as DeveloperPortalError {
+            guard case .networkError = error else {
+                XCTFail("Unexpected error: \(error)")
+                return
+            }
+        }
+    }
+
+    func testInvalidResponseFormatMalformedPlist() async throws {
+        let client = makeClient { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data("Malformed Not A Plist".utf8))
+        }
+
+        do {
+            _ = try await client.listTeams()
+            XCTFail("Expected decodingError on malformed plist")
+        } catch let error as DeveloperPortalError {
+            guard case .decodingError = error else {
+                XCTFail("Unexpected error: \(error)")
+                return
+            }
+        }
     }
 
     // MARK: - Tests: Authentication & Network Errors
