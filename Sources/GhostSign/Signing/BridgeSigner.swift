@@ -69,6 +69,24 @@ public func signBundleWithStoredIdentity(
     )
 }
 
+/// Top-level signing bridge function using assets fetched from DeveloperPortalClient directly in RAM.
+public func signBundleWithDeveloperPortalAssets(
+    ipaPath: URL,
+    certificate: DeveloperCertificate,
+    privateKeyDER: Data,
+    profile: DeveloperProvisioningProfile,
+    outputPath: URL
+) throws {
+    let bridge = BridgeSigner()
+    try bridge.signBundleWithDeveloperPortalAssets(
+        ipaPath: ipaPath,
+        certificate: certificate,
+        privateKeyDER: privateKeyDER,
+        profile: profile,
+        outputPath: outputPath
+    )
+}
+
 public final class BridgeSigner {
     public init() {}
 
@@ -162,6 +180,30 @@ public final class BridgeSigner {
             certificateDER: rawIdentity.certificateDER,
             privateKeyDER: rawIdentity.privateKeyDER,
             provisionPath: provisionPath,
+            outputPath: outputPath
+        )
+    }
+
+    /// Signs an application bundle directly using models returned by DeveloperPortalClient.
+    public func signBundleWithDeveloperPortalAssets(
+        ipaPath: URL,
+        certificate: DeveloperCertificate,
+        privateKeyDER: Data,
+        profile: DeveloperProvisioningProfile,
+        outputPath: URL
+    ) throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let tempProfileURL = tempDir.appendingPathComponent("embedded.mobileprovision")
+        try profile.encodedProfile.write(to: tempProfileURL)
+
+        try signBundleWithRawIdentity(
+            ipaPath: ipaPath,
+            certificateDER: certificate.certContent,
+            privateKeyDER: privateKeyDER,
+            provisionPath: tempProfileURL,
             outputPath: outputPath
         )
     }

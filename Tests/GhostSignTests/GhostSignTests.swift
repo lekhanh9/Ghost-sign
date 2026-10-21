@@ -199,6 +199,15 @@ final class GhostSignTests: XCTestCase {
         XCTAssertNotNil(bridge)
     }
 
+    func testBridgeSignerWithDeveloperPortalAssets() throws {
+        let bridge = BridgeSigner()
+        let cert = DeveloperCertificate(certificateId: "CERT123", name: "Dev Cert", certContent: Data([0x30, 0x05, 0x02, 0x01, 0x01, 0x00, 0x00]))
+        let profile = DeveloperProvisioningProfile(provisioningProfileId: "PROF123", encodedProfile: Data("Fake Profile".utf8))
+        XCTAssertNotNil(cert)
+        XCTAssertNotNil(profile)
+        XCTAssertNotNil(bridge)
+    }
+
     func testAppleAuthEmptyCredentialsThrow() async {
         let auth = AppleAuth()
         do {
