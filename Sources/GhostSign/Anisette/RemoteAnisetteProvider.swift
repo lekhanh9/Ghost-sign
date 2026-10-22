@@ -30,10 +30,16 @@ public enum AnisetteError: LocalizedError {
 /// Provider that contacts an external Anisette v3 server (e.g. dadoum/anisette-v3-server).
 public struct RemoteAnisetteProvider: AnisetteDataProvider {
     public let serverURL: URL
+    public let clientConfiguration: AppleClientConfiguration
     private let urlSession: URLSession
 
-    public init(serverURL: URL, urlSession: URLSession = .shared) {
+    public init(
+        serverURL: URL,
+        clientConfiguration: AppleClientConfiguration = .default,
+        urlSession: URLSession = .shared
+    ) {
         self.serverURL = serverURL
+        self.clientConfiguration = clientConfiguration
         self.urlSession = urlSession
     }
 
@@ -53,18 +59,19 @@ public struct RemoteAnisetteProvider: AnisetteDataProvider {
             throw AnisetteError.badServerResponse(statusCode: httpResponse.statusCode, message: "Response is not valid JSON")
         }
 
-        return AnisetteData(
+        let anisette = AnisetteData(
             machineID: (json["X-Apple-I-MD-M"] as? String) ?? (json["machine_id"] as? String) ?? "",
             oneTimePassword: (json["X-Apple-I-MD"] as? String) ?? (json["otp"] as? String) ?? "",
             localUserID: (json["X-Apple-I-MD-LU"] as? String) ?? (json["local_user_id"] as? String) ?? "",
             routingInfo: (json["X-Apple-I-MD-RINFO"] as? String) ?? (json["routing_info"] as? String) ?? "17106176",
             deviceID: (json["X-Mme-Device-Id"] as? String) ?? (json["device_id"] as? String) ?? UUID().uuidString,
             serialNumber: (json["X-Apple-I-SRL-NO"] as? String) ?? (json["serial_number"] as? String) ?? "",
-            clientInfo: (json["X-MMe-Client-Info"] as? String) ?? (json["client_info"] as? String) ?? "<MacBookPro18,1> <macOS;14.5;23F79> <com.apple.AuthKit/1 (com.apple.dt.Xcode/15.4)>",
-            userAgent: "AuthKit/1 (Macintosh; OS X 26.6) (com.apple.dt.Xcode/26.0)",
+            clientInfo: (json["X-MMe-Client-Info"] as? String) ?? (json["client_info"] as? String) ?? AppleClientConfiguration.defaultClientInfo,
+            userAgent: AppleClientConfiguration.defaultUserAgent,
             clientTime: (json["X-Apple-I-Client-Time"] as? String) ?? ISO8601DateFormatter().string(from: Date()),
             locale: (json["X-Apple-Locale"] as? String) ?? Locale.current.identifier,
             timeZone: (json["X-Apple-I-TimeZone"] as? String) ?? (TimeZone.current.abbreviation() ?? "UTC")
         )
+        return clientConfiguration.applying(to: anisette)
     }
 }

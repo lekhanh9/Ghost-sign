@@ -92,6 +92,8 @@ public enum GhostSignConstants {
         public static let gsToken          = "X-Apple-GS-Token"
         public static let appInfo          = "X-Apple-App-Info"
         public static let xcodeVersion     = "X-Xcode-Version"
+        public static let mmeClientInfo    = "X-MMe-Client-Info"
+        public static let appleClientInfo  = "X-Apple-I-Client-Info"
     }
 
     // MARK: - Developer Portal Result Codes

@@ -59,6 +59,7 @@ final class DeveloperPortalClientTests: XCTestCase {
     }
 
     private func makeClient(
+        clientConfiguration: AppleClientConfiguration = .default,
         handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
     ) -> DeveloperPortalClient {
         MockURLProtocol.requestHandler = handler
@@ -79,7 +80,50 @@ final class DeveloperPortalClientTests: XCTestCase {
             )
         )
 
-        return DeveloperPortalClient(session: session, sessionConfiguration: config)
+        return DeveloperPortalClient(
+            session: session,
+            clientConfiguration: clientConfiguration,
+            sessionConfiguration: config
+        )
+    }
+
+    func testCustomClientHeadersAreInjected() async throws {
+        let xmlPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>resultCode</key>
+            <integer>0</integer>
+            <key>teams</key>
+            <array/>
+        </dict>
+        </plist>
+        """
+
+        let configuration = AppleClientConfiguration(
+            userAgent: "CustomAgent/9.9 (iPhone; iOS 17.0)",
+            clientInfo: "<iPhone15,2> <iOS;17.0;21A329> <com.apple.dt.Xcode/15.4>"
+        )
+
+        let client = makeClient(clientConfiguration: configuration) { request in
+            XCTAssertEqual(
+                request.value(forHTTPHeaderField: "User-Agent"),
+                "CustomAgent/9.9 (iPhone; iOS 17.0)"
+            )
+            XCTAssertEqual(
+                request.value(forHTTPHeaderField: "X-MMe-Client-Info"),
+                "<iPhone15,2> <iOS;17.0;21A329> <com.apple.dt.Xcode/15.4>"
+            )
+            XCTAssertEqual(
+                request.value(forHTTPHeaderField: "X-Apple-I-Client-Info"),
+                "<iPhone15,2> <iOS;17.0;21A329> <com.apple.dt.Xcode/15.4>"
+            )
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data(xmlPlist.utf8))
+        }
+
+        _ = try await client.listTeams()
     }
 
     // MARK: - Tests: Teams

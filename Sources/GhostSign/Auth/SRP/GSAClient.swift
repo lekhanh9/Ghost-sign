@@ -86,7 +86,8 @@ public final class GSAClient: Sendable {
         request.setValue("text/x-xml-plist", forHTTPHeaderField: "Content-Type")
         request.setValue("*/*", forHTTPHeaderField: "Accept")
         request.setValue(anisette.userAgent, forHTTPHeaderField: "User-Agent")
-        request.setValue(anisette.clientInfo, forHTTPHeaderField: "X-MMe-Client-Info")
+        request.setValue(anisette.clientInfo, forHTTPHeaderField: Constants.AnisetteHeaders.mmeClientInfo)
+        request.setValue(anisette.clientInfo, forHTTPHeaderField: Constants.AnisetteHeaders.appleClientInfo)
         request.setValue("close", forHTTPHeaderField: "Connection")
 
         for (header, value) in additionalHeaders {
@@ -256,7 +257,8 @@ public final class GSAClient: Sendable {
         request.setValue("text/x-xml-plist", forHTTPHeaderField: "Content-Type")
         request.setValue("*/*", forHTTPHeaderField: "Accept")
         request.setValue(anisette.userAgent, forHTTPHeaderField: "User-Agent")
-        request.setValue(anisette.clientInfo, forHTTPHeaderField: "X-MMe-Client-Info")
+        request.setValue(anisette.clientInfo, forHTTPHeaderField: Constants.AnisetteHeaders.mmeClientInfo)
+        request.setValue(anisette.clientInfo, forHTTPHeaderField: Constants.AnisetteHeaders.appleClientInfo)
         request.setValue(encodedIdentity, forHTTPHeaderField: "X-Apple-Identity-Token")
         request.setValue("com.apple.gs.xcode.auth", forHTTPHeaderField: "X-Apple-App-Info")
         request.setValue("15.4 (15F31d)", forHTTPHeaderField: "X-Xcode-Version")
