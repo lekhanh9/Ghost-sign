@@ -99,6 +99,13 @@ public final class GSAClient: Sendable {
             throw AppleAuthError.badServerResponse("No HTTP response received from GrandSlam.")
         }
 
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? "binary data"
+            throw AppleAuthError.badServerResponse(
+                "HTTP \(httpResponse.statusCode) from \(targetURL.host ?? "GrandSlam"): \(body.prefix(300))"
+            )
+        }
+
         guard !data.isEmpty else {
             throw AppleAuthError.badServerResponse("Empty response (HTTP \(httpResponse.statusCode)).")
         }

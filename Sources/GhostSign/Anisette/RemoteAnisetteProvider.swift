@@ -52,11 +52,11 @@ public struct RemoteAnisetteProvider: AnisetteDataProvider {
         guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
             let code = (response as? HTTPURLResponse)?.statusCode ?? -1
             let msg = String(data: data, encoding: .utf8) ?? "Unknown server response"
-            throw AnisetteError.badServerResponse(statusCode: code, message: msg)
+            throw AnisetteError.badServerResponse(statusCode: code, message: "\(msg) — \(serverURL.absoluteString)")
         }
 
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw AnisetteError.badServerResponse(statusCode: httpResponse.statusCode, message: "Response is not valid JSON")
+            throw AnisetteError.badServerResponse(statusCode: httpResponse.statusCode, message: "Response is not valid JSON — \(serverURL.absoluteString)")
         }
 
         let anisette = AnisetteData(
