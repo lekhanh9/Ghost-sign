@@ -1,11 +1,93 @@
 import XCTest
 @testable import GhostSign
 import GhostCode
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 final class GhostSignTests: XCTestCase {
     func testInitialization() throws {
         let auth = AppleAuth()
         XCTAssertNotNil(auth)
+    }
+
+    private func makeAnisetteProvider(
+        handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
+    ) -> RemoteAnisetteProvider {
+        MockURLProtocol.requestHandler = handler
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        return RemoteAnisetteProvider(
+            serverURL: URL(string: "https://anisette.example.com")!,
+            urlSession: URLSession(configuration: config)
+        )
+    }
+
+    func testRemoteAnisetteProviderUsesServerHeadersVerbatim() async throws {
+        let payload = """
+        {
+          "X-Apple-I-MD": "otp-value",
+          "X-Apple-I-MD-M": "machine-value",
+          "X-MMe-Client-Info": "<MacBookPro13,2> <macOS;13.1;22C65> <com.apple.AuthKit/1 (com.apple.akd/1.0)>",
+          "X-Mme-Device-Id": "DEVICE-ID-1",
+          "User-Agent": "AuthKit/1 (Macintosh; OS X 13.1)"
+        }
+        """
+
+        let provider = makeAnisetteProvider { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data(payload.utf8))
+        }
+
+        let anisette = try await provider.fetchAnisetteData()
+        XCTAssertEqual(anisette.oneTimePassword, "otp-value")
+        XCTAssertEqual(anisette.machineID, "machine-value")
+        XCTAssertEqual(anisette.clientInfo, "<MacBookPro13,2> <macOS;13.1;22C65> <com.apple.AuthKit/1 (com.apple.akd/1.0)>")
+        XCTAssertEqual(anisette.deviceID, "DEVICE-ID-1")
+        XCTAssertEqual(anisette.userAgent, "AuthKit/1 (Macintosh; OS X 13.1)")
+    }
+
+    func testRemoteAnisetteProviderMatchesHeaderCasingAndOmitsMissingUserAgent() async throws {
+        let payload = """
+        {
+          "X-Apple-I-MD-M": "machine-value",
+          "X-Mme-Client-Info": "<Mac> client-info",
+          "X-Mme-Device-Id": "DEVICE-ID-2"
+        }
+        """
+
+        let provider = makeAnisetteProvider { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data(payload.utf8))
+        }
+
+        let anisette = try await provider.fetchAnisetteData()
+        XCTAssertEqual(anisette.clientInfo, "<Mac> client-info")
+        XCTAssertEqual(anisette.userAgent, "")
+    }
+
+    func testRemoteAnisetteProviderRequiresClientInfo() async throws {
+        let payload = """
+        {
+          "X-Apple-I-MD": "otp-value",
+          "X-Apple-I-MD-M": "machine-value"
+        }
+        """
+
+        let provider = makeAnisetteProvider { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data(payload.utf8))
+        }
+
+        do {
+            _ = try await provider.fetchAnisetteData()
+            XCTFail("Expected missingHeader error")
+        } catch let error as AnisetteError {
+            guard case .missingHeader = error else {
+                XCTFail("Unexpected error: \(error)")
+                return
+            }
+        }
     }
 
     func testBridgeSignerInitialization() throws {

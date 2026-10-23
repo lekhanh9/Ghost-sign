@@ -59,7 +59,6 @@ final class DeveloperPortalClientTests: XCTestCase {
     }
 
     private func makeClient(
-        clientConfiguration: AppleClientConfiguration = .default,
         handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
     ) -> DeveloperPortalClient {
         MockURLProtocol.requestHandler = handler
@@ -76,18 +75,19 @@ final class DeveloperPortalClientTests: XCTestCase {
                 oneTimePassword: "mock-otp",
                 localUserID: "mock-user",
                 routingInfo: "17106176",
-                deviceID: "mock-device-id"
+                deviceID: "mock-device-id",
+                clientInfo: "<MacBookPro13,2> <macOS;13.1;22C65> <com.apple.AuthKit/1 (com.apple.akd/1.0)>",
+                userAgent: "AuthKit/1 (Macintosh; OS X 13.1)"
             )
         )
 
         return DeveloperPortalClient(
             session: session,
-            clientConfiguration: clientConfiguration,
             sessionConfiguration: config
         )
     }
 
-    func testCustomClientHeadersAreInjected() async throws {
+    func testAnisetteHeadersAreForwardedVerbatim() async throws {
         let xmlPlist = """
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -101,24 +101,18 @@ final class DeveloperPortalClientTests: XCTestCase {
         </plist>
         """
 
-        let configuration = AppleClientConfiguration(
-            userAgent: "CustomAgent/9.9 (iPhone; iOS 17.0)",
-            clientInfo: "<iPhone15,2> <iOS;17.0;21A329> <com.apple.dt.Xcode/15.4>"
-        )
-
-        let client = makeClient(clientConfiguration: configuration) { request in
+        let client = makeClient { request in
             XCTAssertEqual(
                 request.value(forHTTPHeaderField: "User-Agent"),
-                "CustomAgent/9.9 (iPhone; iOS 17.0)"
+                "AuthKit/1 (Macintosh; OS X 13.1)"
             )
             XCTAssertEqual(
                 request.value(forHTTPHeaderField: "X-MMe-Client-Info"),
-                "<iPhone15,2> <iOS;17.0;21A329> <com.apple.dt.Xcode/15.4>"
+                "<MacBookPro13,2> <macOS;13.1;22C65> <com.apple.AuthKit/1 (com.apple.akd/1.0)>"
             )
-            XCTAssertEqual(
-                request.value(forHTTPHeaderField: "X-Apple-I-Client-Info"),
-                "<iPhone15,2> <iOS;17.0;21A329> <com.apple.dt.Xcode/15.4>"
-            )
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Apple-I-MD"), "mock-otp")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Apple-I-MD-M"), "mock-machine-id")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Mme-Device-Id"), "mock-device-id")
             let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
             return (response, Data(xmlPlist.utf8))
         }

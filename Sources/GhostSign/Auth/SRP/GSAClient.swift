@@ -85,7 +85,9 @@ public final class GSAClient: Sendable {
 
         request.setValue("text/x-xml-plist", forHTTPHeaderField: "Content-Type")
         request.setValue("*/*", forHTTPHeaderField: "Accept")
-        request.setValue(anisette.userAgent, forHTTPHeaderField: "User-Agent")
+        if !anisette.userAgent.isEmpty {
+            request.setValue(anisette.userAgent, forHTTPHeaderField: "User-Agent")
+        }
         request.setValue(anisette.clientInfo, forHTTPHeaderField: Constants.AnisetteHeaders.mmeClientInfo)
         request.setValue(anisette.clientInfo, forHTTPHeaderField: Constants.AnisetteHeaders.appleClientInfo)
         request.setValue("close", forHTTPHeaderField: "Connection")
@@ -263,7 +265,9 @@ public final class GSAClient: Sendable {
         request.httpMethod = "POST"
         request.setValue("text/x-xml-plist", forHTTPHeaderField: "Content-Type")
         request.setValue("*/*", forHTTPHeaderField: "Accept")
-        request.setValue(anisette.userAgent, forHTTPHeaderField: "User-Agent")
+        if !anisette.userAgent.isEmpty {
+            request.setValue(anisette.userAgent, forHTTPHeaderField: "User-Agent")
+        }
         request.setValue(anisette.clientInfo, forHTTPHeaderField: Constants.AnisetteHeaders.mmeClientInfo)
         request.setValue(anisette.clientInfo, forHTTPHeaderField: Constants.AnisetteHeaders.appleClientInfo)
         request.setValue(encodedIdentity, forHTTPHeaderField: "X-Apple-Identity-Token")

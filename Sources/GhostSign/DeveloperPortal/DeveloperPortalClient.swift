@@ -16,7 +16,6 @@ import FoundationNetworking
 public final class DeveloperPortalClient: @unchecked Sendable {
     public let session: AuthSession
     public let urlSession: URLSession
-    public let clientConfiguration: AppleClientConfiguration
 
     private let baseURL = Constants.DeveloperServices.defaultBaseURL
     private let clientID = Constants.DeveloperServices.clientID
@@ -26,21 +25,17 @@ public final class DeveloperPortalClient: @unchecked Sendable {
 
     public init(
         session: AuthSession,
-        clientConfiguration: AppleClientConfiguration = .default,
         sessionConfiguration: URLSessionConfiguration = .default
     ) {
         self.session = session
-        self.clientConfiguration = clientConfiguration
         self.urlSession = URLSession(configuration: sessionConfiguration)
     }
 
     public init(
         session: AuthSession,
-        clientConfiguration: AppleClientConfiguration = .default,
         urlSession: URLSession
     ) {
         self.session = session
-        self.clientConfiguration = clientConfiguration
         self.urlSession = urlSession
     }
 
@@ -63,20 +58,19 @@ public final class DeveloperPortalClient: @unchecked Sendable {
         request.setValue("text/x-xml-plist", forHTTPHeaderField: "Content-Type")
         request.setValue("text/x-xml-plist", forHTTPHeaderField: "Accept")
         request.setValue("en-us", forHTTPHeaderField: "Accept-Language")
-        request.setValue(clientConfiguration.userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue(appInfo, forHTTPHeaderField: Constants.AnisetteHeaders.appInfo)
         request.setValue(xcodeVersion, forHTTPHeaderField: Constants.AnisetteHeaders.xcodeVersion)
         request.setValue(session.dsid, forHTTPHeaderField: Constants.AnisetteHeaders.identityId)
         request.setValue(session.authToken, forHTTPHeaderField: Constants.AnisetteHeaders.gsToken)
 
-        // Attach Anisette device attestation headers
+        // Attach Anisette device attestation headers, including the server-provided
+        // client identity and user agent.
         for (header, value) in session.anisetteData.toHTTPHeaders() {
             request.setValue(value, forHTTPHeaderField: header)
         }
-
-        // The configured spoofed identity wins over whatever the Anisette server reported.
-        request.setValue(clientConfiguration.clientInfo, forHTTPHeaderField: Constants.AnisetteHeaders.mmeClientInfo)
-        request.setValue(clientConfiguration.clientInfo, forHTTPHeaderField: Constants.AnisetteHeaders.appleClientInfo)
+        if !session.anisetteData.userAgent.isEmpty {
+            request.setValue(session.anisetteData.userAgent, forHTTPHeaderField: "User-Agent")
+        }
 
         var bodyDict: [String: Any] = [
             "clientId": clientID,

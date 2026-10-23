@@ -27,19 +27,18 @@ public enum AnisetteError: LocalizedError {
     }
 }
 
-/// Provider that contacts an external Anisette v3 server (e.g. dadoum/anisette-v3-server).
+/// Provider that contacts an external Anisette v3 server (e.g. ani.sidestore.io).
+/// Every client identity header (client info, user agent) is taken verbatim
+/// from the server response; nothing is hardcoded or overridden locally.
 public struct RemoteAnisetteProvider: AnisetteDataProvider {
     public let serverURL: URL
-    public let clientConfiguration: AppleClientConfiguration
     private let urlSession: URLSession
 
     public init(
         serverURL: URL,
-        clientConfiguration: AppleClientConfiguration = .default,
         urlSession: URLSession = .shared
     ) {
         self.serverURL = serverURL
-        self.clientConfiguration = clientConfiguration
         self.urlSession = urlSession
     }
 
@@ -59,19 +58,34 @@ public struct RemoteAnisetteProvider: AnisetteDataProvider {
             throw AnisetteError.badServerResponse(statusCode: httpResponse.statusCode, message: "Response is not valid JSON — \(serverURL.absoluteString)")
         }
 
-        let anisette = AnisetteData(
-            machineID: (json["X-Apple-I-MD-M"] as? String) ?? (json["machine_id"] as? String) ?? "",
-            oneTimePassword: (json["X-Apple-I-MD"] as? String) ?? (json["otp"] as? String) ?? "",
-            localUserID: (json["X-Apple-I-MD-LU"] as? String) ?? (json["local_user_id"] as? String) ?? "",
-            routingInfo: (json["X-Apple-I-MD-RINFO"] as? String) ?? (json["routing_info"] as? String) ?? "17106176",
-            deviceID: (json["X-Mme-Device-Id"] as? String) ?? (json["device_id"] as? String) ?? UUID().uuidString,
-            serialNumber: (json["X-Apple-I-SRL-NO"] as? String) ?? (json["serial_number"] as? String) ?? "",
-            clientInfo: (json["X-MMe-Client-Info"] as? String) ?? (json["client_info"] as? String) ?? AppleClientConfiguration.defaultClientInfo,
-            userAgent: AppleClientConfiguration.defaultUserAgent,
-            clientTime: (json["X-Apple-I-Client-Time"] as? String) ?? ISO8601DateFormatter().string(from: Date()),
-            locale: (json["X-Apple-Locale"] as? String) ?? Locale.current.identifier,
-            timeZone: (json["X-Apple-I-TimeZone"] as? String) ?? (TimeZone.current.abbreviation() ?? "UTC")
+        // Anisette servers disagree on header casing, so match case-insensitively.
+        func header(_ keys: String...) -> String? {
+            for key in keys {
+                if let name = json.keys.first(where: { $0.caseInsensitiveCompare(key) == .orderedSame }),
+                   let value = json[name] as? String,
+                   !value.isEmpty {
+                    return value
+                }
+            }
+            return nil
+        }
+
+        guard let clientInfo = header("X-MMe-Client-Info", "client_info") else {
+            throw AnisetteError.missingHeader("X-MMe-Client-Info — the Anisette server at \(serverURL.absoluteString) did not report a client identity")
+        }
+
+        return AnisetteData(
+            machineID: header("X-Apple-I-MD-M", "machine_id") ?? "",
+            oneTimePassword: header("X-Apple-I-MD", "otp") ?? "",
+            localUserID: header("X-Apple-I-MD-LU", "local_user_id") ?? "",
+            routingInfo: header("X-Apple-I-MD-RINFO", "routing_info") ?? "17106176",
+            deviceID: header("X-Mme-Device-Id", "device_id") ?? UUID().uuidString,
+            serialNumber: header("X-Apple-I-SRL-NO", "serial_number") ?? "",
+            clientInfo: clientInfo,
+            userAgent: header("User-Agent", "user_agent") ?? "",
+            clientTime: header("X-Apple-I-Client-Time", "client_time") ?? ISO8601DateFormatter().string(from: Date()),
+            locale: header("X-Apple-Locale", "locale") ?? Locale.current.identifier,
+            timeZone: header("X-Apple-I-TimeZone", "time_zone") ?? (TimeZone.current.abbreviation() ?? "UTC")
         )
-        return clientConfiguration.applying(to: anisette)
     }
 }

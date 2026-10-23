@@ -16,14 +16,12 @@ public enum GhostSignConstants {
         public static let service        = "iCloud"
         public static let headerVersion  = "1.0.1"
         public static let authApp        = "com.apple.gs.xcode.auth"
-        public static let userAgent      = "AuthKit/1 (Macintosh; OS X 26.6) (com.apple.dt.Xcode/26.0)"
     }
 
     // MARK: - Apple AuthKit & IDMS
 
     public enum AppleAuth {
         public static let appIDKey       = "ba2ec180e6ca6e6c6a542255453b24d6e6e5b2be0cc48bc1b0d8ad64cfe0228f"
-        public static let userAgent      = "AuthKit/1 (Macintosh; OS X 26.6)"
     }
 
     // MARK: - Apple Developer Services 2 (QH65B2)
@@ -32,7 +30,6 @@ public enum GhostSignConstants {
         public static let clientID                = "XABBG36SBA"
         public static let protocolVersion         = "QH65B2"
         public static let servicesProtocolVersion = "v1"
-        public static let userAgent               = "Xcode"
         public static let xcodeVersion            = "15.4 (15F31d)"
         public static let appInfo                 = "com.apple.gs.xcode.auth"
         public static let defaultBaseURL          = "https://developerservices2.apple.com/services/QH65B2"
@@ -80,13 +77,14 @@ public enum GhostSignConstants {
     // MARK: - Anisette Header Keys
 
     public enum AnisetteHeaders {
-        public static let machineID        = "X-Apple-I-MD"
-        public static let oneTimePassword  = "X-Apple-I-MD-M"
+        public static let machineID        = "X-Apple-I-MD-M"
+        public static let oneTimePassword  = "X-Apple-I-MD"
         public static let localUserID      = "X-Apple-I-MD-LU"
         public static let routingInfo      = "X-Apple-I-MD-RINFO"
-        public static let deviceID         = "X-Apple-I-Client-Id"
+        public static let deviceID         = "X-Mme-Device-Id"
         public static let serialNumber     = "X-Apple-I-SRL-NO"
-        public static let clientTime       = "X-Apple-I-TimeZone"
+        public static let clientTime       = "X-Apple-I-Client-Time"
+        public static let timeZone         = "X-Apple-I-TimeZone"
         public static let locale           = "X-Apple-Locale"
         public static let identityId       = "X-Apple-I-Identity-Id"
         public static let gsToken          = "X-Apple-GS-Token"

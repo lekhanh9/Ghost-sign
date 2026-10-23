@@ -28,8 +28,8 @@ public struct AnisetteData: Sendable, Codable, Equatable, Hashable {
         routingInfo: String = "17106176",
         deviceID: String = UUID().uuidString,
         serialNumber: String = "",
-        clientInfo: String = "<MacBookPro18,1> <macOS;14.5;23F79> <com.apple.AuthKit/1 (com.apple.dt.Xcode/15.4)>",
-        userAgent: String = "AuthKit/1 (Macintosh; OS X 26.6) (com.apple.dt.Xcode/26.0)",
+        clientInfo: String = "",
+        userAgent: String = "",
         clientTime: String = ISO8601DateFormatter().string(from: Date()),
         locale: String = Locale.current.identifier,
         timeZone: String = TimeZone.current.abbreviation() ?? "UTC"
