@@ -14,8 +14,9 @@ import FoundationNetworking
 /// Follows SideSign's architecture: credentials, certificates, and profiles are maintained
 /// in memory as raw Data buffers without storing into Apple Keychain.
 public final class DeveloperPortalClient: @unchecked Sendable {
-    public let session: AuthSession
+    public var session: AuthSession
     public let urlSession: URLSession
+    public var anisetteProvider: AnisetteDataProvider?
 
     private let baseURL = Constants.DeveloperServices.defaultBaseURL
     private let clientID = Constants.DeveloperServices.clientID
@@ -25,17 +26,21 @@ public final class DeveloperPortalClient: @unchecked Sendable {
 
     public init(
         session: AuthSession,
+        anisetteProvider: AnisetteDataProvider? = nil,
         sessionConfiguration: URLSessionConfiguration = .default
     ) {
         self.session = session
+        self.anisetteProvider = anisetteProvider
         self.urlSession = URLSession(configuration: sessionConfiguration)
     }
 
     public init(
         session: AuthSession,
-        urlSession: URLSession
+        anisetteProvider: AnisetteDataProvider? = nil,
+        urlSession: URLSession = .shared
     ) {
         self.session = session
+        self.anisetteProvider = anisetteProvider
         self.urlSession = urlSession
     }
 
@@ -63,8 +68,14 @@ public final class DeveloperPortalClient: @unchecked Sendable {
         request.setValue(session.dsid, forHTTPHeaderField: Constants.AnisetteHeaders.identityId)
         request.setValue(session.authToken, forHTTPHeaderField: Constants.AnisetteHeaders.gsToken)
 
-        // Attach Anisette device attestation headers, including the server-provided
-        // client identity and user agent.
+        // Refresh Anisette attestation headers from provider if configured
+        if let provider = anisetteProvider {
+            if let freshAnisette = try? await provider.fetchAnisetteData() {
+                self.session.anisetteData = freshAnisette
+            }
+        }
+
+        // Attach Anisette device attestation headers
         for (header, value) in session.anisetteData.toHTTPHeaders() {
             request.setValue(value, forHTTPHeaderField: header)
         }

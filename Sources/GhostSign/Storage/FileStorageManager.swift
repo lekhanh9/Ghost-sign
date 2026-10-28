@@ -45,6 +45,7 @@ public final class FileStorageManager: @unchecked Sendable {
     public let baseDirectory: URL
     public let identitiesDirectory: URL
     public let profilesDirectory: URL
+    public let sessionsDirectory: URL
 
     /// Initializes a FileStorageManager with a custom or sandbox-default directory.
     ///
@@ -64,6 +65,7 @@ public final class FileStorageManager: @unchecked Sendable {
         self.baseDirectory = root
         self.identitiesDirectory = root.appendingPathComponent(Constants.Storage.identitiesDirectoryName, isDirectory: true)
         self.profilesDirectory = root.appendingPathComponent(Constants.Storage.profilesDirectoryName, isDirectory: true)
+        self.sessionsDirectory = root.appendingPathComponent(Constants.Storage.sessionsDirectoryName, isDirectory: true)
 
         try? createDirectoriesIfNeeded()
     }
@@ -76,6 +78,9 @@ public final class FileStorageManager: @unchecked Sendable {
         }
         if !fm.fileExists(atPath: profilesDirectory.path) {
             try fm.createDirectory(at: profilesDirectory, withIntermediateDirectories: true)
+        }
+        if !fm.fileExists(atPath: sessionsDirectory.path) {
+            try fm.createDirectory(at: sessionsDirectory, withIntermediateDirectories: true)
         }
     }
 
@@ -269,7 +274,7 @@ public final class FileStorageManager: @unchecked Sendable {
         }
     }
 
-    /// Cleans up all stored identities and provisioning profiles.
+    /// Cleans up all stored identities, profiles, and sessions.
     public func clearAll() throws {
         let fm = FileManager.default
         if fm.fileExists(atPath: identitiesDirectory.path) {
@@ -278,6 +283,36 @@ public final class FileStorageManager: @unchecked Sendable {
         if fm.fileExists(atPath: profilesDirectory.path) {
             try fm.removeItem(at: profilesDirectory)
         }
+        if fm.fileExists(atPath: sessionsDirectory.path) {
+            try fm.removeItem(at: sessionsDirectory)
+        }
         try createDirectoriesIfNeeded()
+    }
+
+    // MARK: - Session Persistence
+
+    /// Saves an AuthSession into the sessions directory.
+    @discardableResult
+    public func saveSession(
+        _ session: AuthSession,
+        identifier: String? = nil,
+        password: String? = nil
+    ) throws -> URL {
+        try createDirectoriesIfNeeded()
+        return try SessionManager.save(session, identifier: identifier, directory: sessionsDirectory, password: password)
+    }
+
+    /// Loads an AuthSession from the sessions directory.
+    public func loadSession(
+        identifier: String? = nil,
+        password: String? = nil
+    ) throws -> AuthSession {
+        let targetURL = SessionManager.url(for: identifier, in: sessionsDirectory)
+        return try SessionManager.load(from: targetURL, password: password)
+    }
+
+    /// Lists all stored session files.
+    public func listStoredSessions() -> [StoredSessionInfo] {
+        SessionManager.listSessions(in: sessionsDirectory)
     }
 }

@@ -601,4 +601,84 @@ final class GhostSignTests: XCTestCase {
         XCTAssertEqual(group.identifier, "group.com.SideStore.SideStore")
         XCTAssertEqual(group.applicationGroup, "GRP123456")
     }
+
+    func testSessionManagerPersistenceAndEncryption() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let anisette = AnisetteData(
+            machineID: "test-machine",
+            oneTimePassword: "test-otp",
+            localUserID: "test-lu",
+            routingInfo: "17106176",
+            deviceID: "DEVICE-123",
+            clientInfo: "<MacBookPro16,1> <macOS;14.0;23A344>",
+            userAgent: "AuthKit/1 (Macintosh; OS X 14.0)"
+        )
+
+        let session = AuthSession(
+            dsid: "1234567890",
+            authToken: "GS_TOKEN_ABCXYZ",
+            idmsToken: "IDMS_TOKEN_123",
+            sessionKey: Data([1, 2, 3, 4, 5, 6, 7, 8]),
+            anisetteData: anisette,
+            expirationDate: Date().addingTimeInterval(3600),
+            teamID: "TEAM123456"
+        )
+
+        // 1. Auto machine encryption mode (no password)
+        let savedURL = try SessionManager.save(session, identifier: "dev", directory: tempDir)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: savedURL.path))
+
+        let loaded = try SessionManager.load(identifier: "dev", from: savedURL)
+        XCTAssertEqual(loaded.dsid, "1234567890")
+        XCTAssertEqual(loaded.authToken, "GS_TOKEN_ABCXYZ")
+        XCTAssertEqual(loaded.idmsToken, "IDMS_TOKEN_123")
+        XCTAssertEqual(loaded.teamID, "TEAM123456")
+        XCTAssertEqual(loaded.anisetteData.machineID, "test-machine")
+        XCTAssertEqual(loaded.anisetteData.oneTimePassword, "test-otp")
+        XCTAssertFalse(loaded.isExpired)
+
+        // 2. Custom password encryption mode
+        let pwdURL = try SessionManager.save(session, identifier: "secure", directory: tempDir, password: "SecretPassword123")
+        let loadedWithPwd = try SessionManager.load(from: pwdURL, password: "SecretPassword123")
+        XCTAssertEqual(loadedWithPwd.dsid, "1234567890")
+
+        // 3. Failed password decryption
+        XCTAssertThrowsError(try SessionManager.load(from: pwdURL, password: "WrongPassword"))
+
+        // 4. Listing sessions
+        let sessionsList = SessionManager.listSessions(in: tempDir)
+        XCTAssertEqual(sessionsList.count, 2)
+
+        // 5. Deletion
+        try SessionManager.deleteSession(identifier: "dev", at: savedURL)
+        XCTAssertFalse(SessionManager.hasSession(identifier: "dev", in: tempDir))
+    }
+
+    func testDynamicAnisetteHeadersGeneration() throws {
+        let anisette = AnisetteData(
+            machineID: "machine-1",
+            oneTimePassword: "otp-999",
+            localUserID: "lu-1",
+            routingInfo: "17106176",
+            deviceID: "dev-id",
+            serialNumber: "SERIAL123",
+            clientInfo: "<iPhone14,2> <iOS;17.0;21A329>",
+            userAgent: "Xcode/15.4"
+        )
+
+        let headers = anisette.toHTTPHeaders()
+        XCTAssertEqual(headers["X-Apple-I-MD"], "otp-999")
+        XCTAssertEqual(headers["X-Apple-I-MD-M"], "machine-1")
+        XCTAssertEqual(headers["X-Apple-I-MD-LU"], "lu-1")
+        XCTAssertEqual(headers["X-Apple-I-MD-RINFO"], "17106176")
+        XCTAssertEqual(headers["X-Mme-Device-Id"], "dev-id")
+        XCTAssertEqual(headers["X-Apple-I-SRL-NO"], "SERIAL123")
+        XCTAssertEqual(headers["X-MMe-Client-Info"], "<iPhone14,2> <iOS;17.0;21A329>")
+        XCTAssertEqual(headers["X-Apple-I-Client-Info"], "<iPhone14,2> <iOS;17.0;21A329>")
+        XCTAssertEqual(headers["User-Agent"], "Xcode/15.4")
+        XCTAssertFalse(headers["X-Apple-I-Client-Time"]?.isEmpty ?? true)
+    }
 }

@@ -34,8 +34,12 @@ public struct RemoteAnisetteProvider: AnisetteDataProvider {
     public let serverURL: URL
     private let urlSession: URLSession
 
+    public static var defaultURL: URL {
+        URL(string: Constants.Anisette.defaultServerURL) ?? URL(string: "https://ani.sidestore.io")!
+    }
+
     public init(
-        serverURL: URL,
+        serverURL: URL = RemoteAnisetteProvider.defaultURL,
         urlSession: URLSession = .shared
     ) {
         self.serverURL = serverURL

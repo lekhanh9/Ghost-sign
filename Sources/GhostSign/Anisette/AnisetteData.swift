@@ -47,19 +47,30 @@ public struct AnisetteData: Sendable, Codable, Equatable, Hashable {
         self.timeZone = timeZone
     }
 
-    /// Converts the attestation fields into standard Apple HTTP header pairs.
-    public func toHTTPHeaders() -> [String: String] {
-        [
+    /// Converts the attestation fields into standard Apple HTTP header pairs with refreshed client time.
+    public func toHTTPHeaders(refreshTimestamp: Bool = true) -> [String: String] {
+        let effectiveTime = refreshTimestamp ? ISO8601DateFormatter().string(from: Date()) : clientTime
+
+        var headers: [String: String] = [
             "X-Apple-I-MD": oneTimePassword,
             "X-Apple-I-MD-M": machineID,
             "X-Apple-I-MD-LU": localUserID,
-            "X-Apple-I-MD-RINFO": routingInfo,
+            "X-Apple-I-MD-RINFO": routingInfo.isEmpty ? Constants.Anisette.defaultRoutingInfo : routingInfo,
             "X-Mme-Device-Id": deviceID,
-            "X-Apple-I-SRL-NO": serialNumber,
-            "X-Apple-I-Client-Time": clientTime,
-            "X-Apple-Locale": locale,
-            "X-Apple-I-TimeZone": timeZone,
-            "X-MMe-Client-Info": clientInfo
+            "X-Apple-I-Client-Time": effectiveTime,
+            "X-Apple-Locale": locale.isEmpty ? Locale.current.identifier : locale,
+            "X-Apple-I-TimeZone": timeZone.isEmpty ? (TimeZone.current.abbreviation() ?? "UTC") : timeZone
         ]
+        if !serialNumber.isEmpty {
+            headers["X-Apple-I-SRL-NO"] = serialNumber
+        }
+        if !clientInfo.isEmpty {
+            headers["X-MMe-Client-Info"] = clientInfo
+            headers["X-Apple-I-Client-Info"] = clientInfo
+        }
+        if !userAgent.isEmpty {
+            headers["User-Agent"] = userAgent
+        }
+        return headers
     }
 }

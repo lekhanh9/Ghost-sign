@@ -99,6 +99,29 @@ public enum GhostSignConstants {
         public static let appleClientInfo  = "X-Apple-I-Client-Info"
     }
 
+    // MARK: - Anisette Defaults
+
+    public enum Anisette {
+        public static let defaultServerURL  = "https://ani.sidestore.io"
+        public static let defaultRoutingInfo = "17106176"
+    }
+
+    // MARK: - Session Storage Constants
+
+    public enum SessionStorage {
+        public static let magic: [UInt8]     = [0x47, 0x53, 0x53, 0x31] // "GSS1"
+        public static let defaultFileName    = "session.dat"
+        public static let filePrefix         = "session_"
+        public static let fileExtension      = ".dat"
+        public static let saltLength         = 16
+        public static let nonceLength        = 12
+        public static let tagLength          = 16
+        public static let pbkdf2Rounds       = 100_000
+        public static let keyOutputLength    = 32
+        public static let defaultDirName     = "GhostSign"
+        public static let sessionSubdir      = "Sessions"
+    }
+
     // MARK: - Developer Portal Result Codes
 
     public enum ResultCodes {
