@@ -26,7 +26,7 @@ public final class DeveloperPortalClient: @unchecked Sendable {
 
     public init(
         session: AuthSession,
-        anisetteProvider: AnisetteDataProvider? = nil,
+        anisetteProvider: AnisetteDataProvider? = SmartAnisetteProvider(),
         sessionConfiguration: URLSessionConfiguration = .default
     ) {
         self.session = session
@@ -36,7 +36,7 @@ public final class DeveloperPortalClient: @unchecked Sendable {
 
     public init(
         session: AuthSession,
-        anisetteProvider: AnisetteDataProvider? = nil,
+        anisetteProvider: AnisetteDataProvider? = SmartAnisetteProvider(),
         urlSession: URLSession = .shared
     ) {
         self.session = session

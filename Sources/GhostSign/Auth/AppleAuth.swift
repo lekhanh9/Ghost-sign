@@ -43,7 +43,7 @@ public final class AppleAuth: Sendable {
     private let urlSession: URLSession
 
     public init(
-        anisetteProvider: AnisetteDataProvider = MockAnisetteDataProvider(),
+        anisetteProvider: AnisetteDataProvider = SmartAnisetteProvider(),
         urlSession: URLSession = .shared,
         gsaClient: GSAClient? = nil
     ) {

@@ -681,4 +681,11 @@ final class GhostSignTests: XCTestCase {
         XCTAssertEqual(headers["User-Agent"], "Xcode/15.4")
         XCTAssertFalse(headers["X-Apple-I-Client-Time"]?.isEmpty ?? true)
     }
+
+    func testSmartAnisetteProviderInitialization() {
+        let smart = SmartAnisetteProvider()
+        XCTAssertTrue(smart.preferLocal)
+        XCTAssertNotNil(smart.remoteProvider)
+        XCTAssertEqual(smart.remoteProvider.serverURL, RemoteAnisetteProvider.defaultURL)
+    }
 }
