@@ -417,4 +417,55 @@ public final class DeveloperPortalClient: @unchecked Sendable {
         )
         return true
     }
+
+    /// Automatically provisions matching profiles for an AppBundle and all of its nested app extensions (.appex).
+    /// Registers App IDs if missing and downloads Xcode Team Provisioning Profiles (or creates development profiles).
+    public func prepareProfiles(
+        for bundle: AppBundle,
+        teamId: String,
+        certificateId: String? = nil,
+        deviceUDIDs: [String] = []
+    ) async throws -> [ProvisioningProfile] {
+        var profiles: [ProvisioningProfile] = []
+
+        func fetchProfile(bundleID: String, name: String) async throws -> ProvisioningProfile {
+            let existingAppIDs = try await listAppIds(teamId: teamId)
+            var targetAppID = existingAppIDs.first(where: { $0.identifier == bundleID })
+
+            if targetAppID == nil {
+                targetAppID = try await addAppId(name: name, identifier: bundleID, teamId: teamId)
+            }
+
+            guard let appIdId = targetAppID?.appIdId else {
+                throw DeveloperPortalError.appIDNotFound
+            }
+
+            do {
+                let devProfile = try await downloadTeamProvisioningProfile(appIdId: appIdId, teamId: teamId)
+                return try devProfile.toProvisioningProfile()
+            } catch {
+                if let certId = certificateId {
+                    let devProfile = try await createProvisioningProfile(
+                        name: "\(name) Profile",
+                        bundleId: appIdId,
+                        certificateId: certId,
+                        deviceUDIDs: deviceUDIDs,
+                        teamId: teamId
+                    )
+                    return try devProfile.toProvisioningProfile()
+                }
+                throw error
+            }
+        }
+
+        let mainProfile = try await fetchProfile(bundleID: bundle.bundleIdentifier, name: bundle.name)
+        profiles.append(mainProfile)
+
+        for ext in bundle.appExtensions {
+            let extProfile = try await fetchProfile(bundleID: ext.bundleIdentifier, name: ext.name)
+            profiles.append(extProfile)
+        }
+
+        return profiles
+    }
 }

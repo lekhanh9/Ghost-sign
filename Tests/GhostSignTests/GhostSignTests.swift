@@ -436,4 +436,130 @@ final class GhostSignTests: XCTestCase {
         XCTAssertEqual(Constants.Storage.identitiesDirectoryName, "Identities")
         XCTAssertEqual(Constants.Storage.profilesDirectoryName, "Profiles")
     }
+
+    func testProvisioningProfileParsingAndMatching() throws {
+        let profilePlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>Name</key>
+            <string>ContraStore Dev Profile</string>
+            <key>TeamIdentifier</key>
+            <array>
+                <string>ABC123TEAM</string>
+            </array>
+            <key>TeamName</key>
+            <string>Contra Team</string>
+            <key>UUID</key>
+            <string>12345678-ABCD-1234-ABCD-1234567890AB</string>
+            <key>Entitlements</key>
+            <dict>
+                <key>application-identifier</key>
+                <string>ABC123TEAM.com.contra.store</string>
+                <key>com.apple.developer.team-identifier</key>
+                <string>ABC123TEAM</string>
+                <key>get-task-allow</key>
+                <true/>
+                <key>keychain-access-groups</key>
+                <array>
+                    <string>ABC123TEAM.*</string>
+                </array>
+            </dict>
+        </dict>
+        </plist>
+        """
+
+        let profile = try ProvisioningProfile(data: Data(profilePlist.utf8))
+        XCTAssertEqual(profile.name, "ContraStore Dev Profile")
+        XCTAssertEqual(profile.teamIdentifier, "ABC123TEAM")
+        XCTAssertEqual(profile.bundleIdentifier, "com.contra.store")
+        XCTAssertTrue(profile.matches(bundleIdentifier: "com.contra.store"))
+        XCTAssertFalse(profile.matches(bundleIdentifier: "com.other.app"))
+
+        let wildcardProfilePlist = profilePlist.replacingOccurrences(of: "com.contra.store", with: "com.contra.*")
+        let wildcardProfile = try ProvisioningProfile(data: Data(wildcardProfilePlist.utf8))
+        XCTAssertTrue(wildcardProfile.matches(bundleIdentifier: "com.contra.store"))
+        XCTAssertTrue(wildcardProfile.matches(bundleIdentifier: "com.contra.widget"))
+        XCTAssertFalse(wildcardProfile.matches(bundleIdentifier: "com.other.app"))
+    }
+
+    func testAppBundleDiscoveryAndEntitlementsRewriting() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let appDir = tempDir.appendingPathComponent("TestApp.app")
+        let pluginsDir = appDir.appendingPathComponent("PlugIns")
+        let extDir = pluginsDir.appendingPathComponent("TestWidget.appex")
+        try FileManager.default.createDirectory(at: extDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        // Main app Info.plist
+        let appPlist: [String: Any] = [
+            "CFBundleIdentifier": "com.test.app",
+            "CFBundleExecutable": "TestApp",
+            "CFBundleDisplayName": "Test App",
+            "CFBundleShortVersionString": "2.0",
+            "CFBundleVersion": "200"
+        ]
+        let appPlistData = try PropertyListSerialization.data(fromPropertyList: appPlist, format: .xml, options: 0)
+        try appPlistData.write(to: appDir.appendingPathComponent("Info.plist"))
+        try Data("binary".utf8).write(to: appDir.appendingPathComponent("TestApp"))
+
+        // Extension Info.plist
+        let extPlist: [String: Any] = [
+            "CFBundleIdentifier": "com.test.app.widget",
+            "CFBundleExecutable": "TestWidget",
+            "CFBundleDisplayName": "Test Widget"
+        ]
+        let extPlistData = try PropertyListSerialization.data(fromPropertyList: extPlist, format: .xml, options: 0)
+        try extPlistData.write(to: extDir.appendingPathComponent("Info.plist"))
+        try Data("binary".utf8).write(to: extDir.appendingPathComponent("TestWidget"))
+
+        // Validate AppBundle discovery
+        guard let bundle = AppBundle(fileURL: appDir) else {
+            XCTFail("Failed to load AppBundle")
+            return
+        }
+        XCTAssertEqual(bundle.bundleIdentifier, "com.test.app")
+        XCTAssertEqual(bundle.name, "Test App")
+        XCTAssertEqual(bundle.executableName, "TestApp")
+        XCTAssertEqual(bundle.appExtensions.count, 1)
+        XCTAssertEqual(bundle.appExtensions.first?.bundleIdentifier, "com.test.app.widget")
+
+        // Test EntitlementModifier keychain rewriting
+        let profilePlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>Name</key>
+            <string>Test Profile</string>
+            <key>TeamIdentifier</key>
+            <array>
+                <string>NEWTEAM123</string>
+            </array>
+            <key>UUID</key>
+            <string>A1B2C3D4-E5F6-7890-ABCD-EF1234567890</string>
+            <key>Entitlements</key>
+            <dict>
+                <key>application-identifier</key>
+                <string>NEWTEAM123.com.test.app</string>
+                <key>com.apple.developer.team-identifier</key>
+                <string>NEWTEAM123</string>
+                <key>get-task-allow</key>
+                <true/>
+            </dict>
+        </dict>
+        </plist>
+        """
+        let profile = try ProvisioningProfile(data: Data(profilePlist.utf8))
+        let ents = EntitlementModifier.makeEntitlements(for: bundle, profile: profile)
+        XCTAssertEqual(ents["application-identifier"] as? String, "NEWTEAM123.com.test.app")
+        XCTAssertEqual(ents["com.apple.developer.team-identifier"] as? String, "NEWTEAM123")
+        XCTAssertEqual(ents["get-task-allow"] as? Bool, true)
+
+        // Ad-hoc mode
+        let adHocEnts = EntitlementModifier.makeEntitlements(for: bundle, profile: nil)
+        XCTAssertEqual(adHocEnts["application-identifier"] as? String, "com.test.app")
+        XCTAssertEqual(adHocEnts["get-task-allow"] as? Bool, true)
+    }
 }
