@@ -36,7 +36,8 @@ public struct LocalAnisetteProvider: AnisetteDataProvider, Sendable {
         // Therefore, we call dlopen() directly on the system framework paths.
         let candidatePaths = [
             "/System/Library/PrivateFrameworks/AuthKit.framework/AuthKit",
-            "/System/Library/Frameworks/AuthKit.framework/AuthKit"
+            "/System/Library/Frameworks/AuthKit.framework/AuthKit",
+            "/System/Library/PrivateFrameworks/AuthKit.framework/akd"
         ]
 
         for path in candidatePaths {
