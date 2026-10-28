@@ -62,6 +62,11 @@ public enum GhostSignConstants {
         public static let addAppID                  = "ios/addAppId.action"
         public static let updateAppID               = "ios/updateAppId.action"
         public static let deleteAppID               = "ios/deleteAppId.action"
+        public static let listApplicationGroups     = "ios/listApplicationGroups.action"
+        public static let addApplicationGroup       = "ios/addApplicationGroup.action"
+        public static let updateApplicationGroup    = "ios/updateApplicationGroup.action"
+        public static let assignApplicationGroup    = "ios/assignApplicationGroupToAppId.action"
+        public static let deleteApplicationGroup    = "ios/deleteApplicationGroup.action"
         public static let listCertificates          = "ios/listAllDevelopmentCerts.action"
         public static let submitCSR                 = "ios/submitDevelopmentCSR.action"
         public static let submitDevelopmentCSR      = "ios/submitDevelopmentCSR.action"
@@ -103,6 +108,7 @@ public enum GhostSignConstants {
         public static let maximumCertificatesReached          = 35
         public static let bundleIdentifierUnavailable         = 35
         public static let maximumDevicesReached               = 35
+        public static let appGroupDoesNotExist                = 35
         public static let maximumAppIDLimitReached            = 37
         public static let maximumCertificatesReachedAlternate = 7460
         public static let profileNotFoundAlternate            = 8201

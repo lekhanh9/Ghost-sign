@@ -561,5 +561,44 @@ final class GhostSignTests: XCTestCase {
         let adHocEnts = EntitlementModifier.makeEntitlements(for: bundle, profile: nil)
         XCTAssertEqual(adHocEnts["application-identifier"] as? String, "com.test.app")
         XCTAssertEqual(adHocEnts["get-task-allow"] as? Bool, true)
+
+        // Dump info test
+        let info = bundle.dumpInfo()
+        XCTAssertTrue(info.contains("com.test.app"))
+        XCTAssertTrue(info.contains("TestWidget"))
+    }
+
+    func testAdHocProfileGeneration() throws {
+        let adHoc = ProvisioningProfile.createAdHoc(bundleIdentifier: "com.SideStore.SideStore")
+        XCTAssertEqual(adHoc.bundleIdentifier, "com.SideStore.SideStore")
+        XCTAssertTrue(adHoc.matches(bundleIdentifier: "com.SideStore.SideStore"))
+        XCTAssertFalse(adHoc.data.isEmpty)
+
+        // Verify XML can be parsed by any AltStore/SideStore reader
+        let parsed = try ProvisioningProfile(data: adHoc.data)
+        XCTAssertEqual(parsed.bundleIdentifier, "com.SideStore.SideStore")
+        XCTAssertEqual(parsed.teamIdentifier, "ADHOC12345")
+        XCTAssertEqual(parsed.entitlements["get-task-allow"] as? Bool, true)
+    }
+
+    func testDeveloperAppGroupModel() throws {
+        let plist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>name</key>
+            <string>SideStore App Group</string>
+            <key>identifier</key>
+            <string>group.com.SideStore.SideStore</string>
+            <key>applicationGroup</key>
+            <string>GRP123456</string>
+        </dict>
+        </plist>
+        """
+        let group = try PropertyListDecoder().decode(DeveloperAppGroup.self, from: Data(plist.utf8))
+        XCTAssertEqual(group.name, "SideStore App Group")
+        XCTAssertEqual(group.identifier, "group.com.SideStore.SideStore")
+        XCTAssertEqual(group.applicationGroup, "GRP123456")
     }
 }

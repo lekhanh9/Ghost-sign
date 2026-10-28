@@ -223,6 +223,62 @@ public final class DeveloperPortalClient: @unchecked Sendable {
         return appId
     }
 
+    /// Queries registered Application Groups under the developer team.
+    public func listAppGroups(teamId: String) async throws -> [DeveloperAppGroup] {
+        let response: ListAppGroupsResponse = try await performRequest(
+            action: Constants.URLs.listApplicationGroups,
+            teamId: teamId,
+            context: "appGroup"
+        )
+        return response.applicationGroupList ?? []
+    }
+
+    /// Registers a new Application Group under the developer team.
+    public func addAppGroup(name: String, identifier: String, teamId: String) async throws -> DeveloperAppGroup {
+        let response: AppGroupResponse = try await performRequest(
+            action: Constants.URLs.addApplicationGroup,
+            parameters: [
+                "name": name,
+                "identifier": identifier
+            ],
+            teamId: teamId,
+            context: "appGroup"
+        )
+        guard let group = response.applicationGroup else {
+            throw DeveloperPortalError.portalError(code: -1, message: "Response missing applicationGroup dictionary")
+        }
+        return group
+    }
+
+    /// Assigns application groups to an App ID.
+    public func assignAppGroup(groupIds: [String], appIdId: String, teamId: String) async throws -> DeveloperAppId {
+        let response: AppIdResponse = try await performRequest(
+            action: Constants.URLs.assignApplicationGroup,
+            parameters: [
+                "appIdId": appIdId,
+                "applicationGroups": groupIds
+            ],
+            teamId: teamId,
+            context: "appGroup"
+        )
+        guard let appId = response.appId else {
+            throw DeveloperPortalError.appIDNotFound
+        }
+        return appId
+    }
+
+    /// Deletes an Application Group from the developer team.
+    @discardableResult
+    public func deleteAppGroup(groupId: String, teamId: String) async throws -> Bool {
+        let _: DeveloperPortalStatusResponse = try await performRequest(
+            action: Constants.URLs.deleteApplicationGroup,
+            parameters: ["applicationGroup": groupId],
+            teamId: teamId,
+            context: "appGroup"
+        )
+        return true
+    }
+
     /// Queries active development certificates for the developer team.
     public func listCertificates(teamId: String) async throws -> [DeveloperCertificate] {
         let response: ListCertificatesResponse = try await performRequest(

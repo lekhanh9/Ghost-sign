@@ -134,7 +134,17 @@ public final class BridgeSigner: @unchecked Sendable {
             if let wildcard = provisioningProfiles.first(where: { $0.matches(bundleIdentifier: bundle.bundleIdentifier) }) {
                 return wildcard
             }
-            return provisioningProfiles.first ?? bundle.provisioningProfile
+            if let first = provisioningProfiles.first {
+                return first
+            }
+            if let existing = bundle.provisioningProfile {
+                return existing
+            }
+            // Auto-synthesize Ad-Hoc provisioning profile so apps requiring embedded.mobileprovision (e.g. SideStore) boot cleanly
+            return ProvisioningProfile.createAdHoc(
+                bundleIdentifier: bundle.bundleIdentifier,
+                entitlements: bundle.extractEmbeddedEntitlements()
+            )
         }
 
         let mainProfile = resolveProfile(for: appBundle)

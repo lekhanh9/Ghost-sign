@@ -483,3 +483,44 @@ public struct ProvisioningProfileResponse: Decodable, Sendable {
     public let userString: String?
     public let provisioningProfile: DeveloperProvisioningProfile?
 }
+
+// MARK: - Application Group Models
+
+/// Represents an Application Group registered under an Apple Developer Team.
+public struct DeveloperAppGroup: Sendable, Codable, Equatable, Hashable, Identifiable {
+    public var id: String { identifier }
+    public let name: String
+    public let identifier: String
+    public let applicationGroup: String
+
+    public init(name: String, identifier: String, applicationGroup: String = "") {
+        self.name = name
+        self.identifier = identifier
+        self.applicationGroup = applicationGroup
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case identifier
+        case applicationGroup
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        self.identifier = try container.decodeIfPresent(String.self, forKey: .identifier) ?? ""
+        self.applicationGroup = try container.decodeIfPresent(String.self, forKey: .applicationGroup) ?? ""
+    }
+}
+
+public struct ListAppGroupsResponse: Decodable, Sendable {
+    public let resultCode: Int?
+    public let userString: String?
+    public let applicationGroupList: [DeveloperAppGroup]?
+}
+
+public struct AppGroupResponse: Decodable, Sendable {
+    public let resultCode: Int?
+    public let userString: String?
+    public let applicationGroup: DeveloperAppGroup?
+}

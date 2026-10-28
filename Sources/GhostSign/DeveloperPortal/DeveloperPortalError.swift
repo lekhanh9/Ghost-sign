@@ -36,6 +36,12 @@ public enum DeveloperPortalError: Error, CustomStringConvertible, LocalizedError
     /// The requested provisioning profile or App ID was not found on the portal (resultCode 8201 / 9115).
     case profileNotFound
 
+    /// The App ID was not found on the developer portal.
+    case appIDNotFound
+
+    /// The requested Application Group was not found or does not exist (resultCode 35).
+    case appGroupDoesNotExist(String)
+
     /// The session token expired or authentication was rejected by Apple ID services.
     case unauthenticated(String)
 
@@ -95,6 +101,10 @@ public enum DeveloperPortalError: Error, CustomStringConvertible, LocalizedError
             return "The requested development certificate was not found on the developer portal."
         case .profileNotFound:
             return "The requested provisioning profile was not found on the developer portal."
+        case .appIDNotFound:
+            return "The requested App ID was not found on the developer portal."
+        case .appGroupDoesNotExist(let msg):
+            return "The application group does not exist on the developer portal: \(msg)"
         case .unauthenticated(let msg):
             return "Apple Developer Services authentication failed: \(msg)"
         case .noTeams:

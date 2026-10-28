@@ -149,6 +149,62 @@ public struct ProvisioningProfile: Sendable, Equatable, Identifiable {
         }
         return plist
     }
+
+    /// Generates an in-memory Ad-Hoc / Fake-sign provisioning profile.
+    /// Crucial for apps (such as SideStore) that verify `embedded.mobileprovision` existence on boot.
+    public static func createAdHoc(
+        bundleIdentifier: String,
+        teamIdentifier: String = "ADHOC12345",
+        teamName: String = "ContraStore Ad-Hoc",
+        entitlements: [String: Any]? = nil
+    ) -> ProvisioningProfile {
+        let uuid = UUID()
+        let now = Date()
+        let tenYearsLater = now.addingTimeInterval(10 * 365 * 86400)
+
+        var finalEntitlements: [String: Any] = entitlements ?? [:]
+        if finalEntitlements["application-identifier"] == nil {
+            finalEntitlements["application-identifier"] = "\(teamIdentifier).\(bundleIdentifier)"
+        }
+        if finalEntitlements["com.apple.developer.team-identifier"] == nil {
+            finalEntitlements["com.apple.developer.team-identifier"] = teamIdentifier
+        }
+        if finalEntitlements["get-task-allow"] == nil {
+            finalEntitlements["get-task-allow"] = true
+        }
+        if finalEntitlements["keychain-access-groups"] == nil {
+            finalEntitlements["keychain-access-groups"] = ["\(teamIdentifier).*"]
+        }
+
+        let dict: [String: Any] = [
+            "AppIDName": bundleIdentifier,
+            "ApplicationIdentifierPrefix": [teamIdentifier],
+            "CreationDate": now,
+            "ExpirationDate": tenYearsLater,
+            "Name": "Ad-Hoc Provisioning Profile",
+            "TeamIdentifier": [teamIdentifier],
+            "TeamName": teamName,
+            "UUID": uuid.uuidString,
+            "Entitlements": finalEntitlements,
+            "ProvisionsAllDevices": true,
+            "LocalProvision": true
+        ]
+
+        let plistData = (try? PropertyListSerialization.data(fromPropertyList: dict, format: .xml, options: 0)) ?? Data()
+
+        return ProvisioningProfile(
+            name: "Ad-Hoc Provisioning Profile",
+            uuid: uuid,
+            bundleIdentifier: bundleIdentifier,
+            teamIdentifier: teamIdentifier,
+            teamName: teamName,
+            creationDate: now,
+            expirationDate: tenYearsLater,
+            deviceIDs: [],
+            isFreeProvisioningProfile: true,
+            data: plistData
+        )
+    }
 }
 
 extension DeveloperProvisioningProfile {

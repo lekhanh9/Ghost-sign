@@ -287,4 +287,52 @@ public struct AppBundle: Sendable, Identifiable, Hashable, Equatable {
 
         return nil
     }
+
+    /// Generates a diagnostic summary of the app bundle structure, executable, extensions, and entitlements.
+    public func dumpInfo() -> String {
+        var lines: [String] = []
+        lines.append("=== App Bundle Info: \(name) ===")
+        lines.append("Bundle ID: \(bundleIdentifier)")
+        lines.append("Version: \(version) (\(buildVersion))")
+        lines.append("Path: \(fileURL.path)")
+        lines.append("Executable: \(executableName ?? "None") (\(executableURL?.path ?? "Not Found"))")
+        if let profile = provisioningProfile {
+            lines.append("Profile: \(profile.name) [Team: \(profile.teamIdentifier)] (Expires: \(profile.expirationDate))")
+        } else {
+            lines.append("Profile: None (Ad-Hoc / Fake-sign)")
+        }
+
+        let exts = appExtensions
+        if !exts.isEmpty {
+            lines.append("App Extensions (\(exts.count)):")
+            for ext in exts {
+                lines.append("  - \(ext.name) (\(ext.bundleIdentifier)) at \(ext.fileURL.lastPathComponent)")
+            }
+        }
+
+        let fws = frameworks
+        if !fws.isEmpty {
+            lines.append("Frameworks (\(fws.count)):")
+            for fw in fws {
+                lines.append("  - \(fw.lastPathComponent)")
+            }
+        }
+
+        let dls = dylibs
+        if !dls.isEmpty {
+            lines.append("Dylibs (\(dls.count)):")
+            for dl in dls {
+                lines.append("  - \(dl.lastPathComponent)")
+            }
+        }
+
+        if let ents = extractEmbeddedEntitlements(), !ents.isEmpty {
+            lines.append("Entitlements (\(ents.count) keys):")
+            for (k, _) in ents.sorted(by: { $0.key < $1.key }) {
+                lines.append("  - \(k)")
+            }
+        }
+        lines.append("================================")
+        return lines.joined(separator: "\n")
+    }
 }
