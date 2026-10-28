@@ -251,6 +251,50 @@ public final class GSAClient: Sendable {
         return try SRPClient.decryptAppToken(encryptedToken: encryptedToken, sessionKey: sessionKey, targetApp: targetApp)
     }
 
+    /// Dispatches 2FA verification push code to user's trusted Apple devices via /auth/verify/trusteddevice.
+    public func triggerTrustedDevice2FA(
+        dsid: String,
+        idmsToken: String,
+        anisette: AnisetteData
+    ) async throws {
+        let identityToken = "\(dsid):\(idmsToken)"
+        let encodedIdentity = Data(identityToken.utf8).base64EncodedString()
+
+        var request = URLRequest(url: Endpoints.trustedDevice)
+        request.httpMethod = "GET"
+        request.setValue("text/x-xml-plist", forHTTPHeaderField: "Content-Type")
+        request.setValue("*/*", forHTTPHeaderField: "Accept")
+        if !anisette.userAgent.isEmpty {
+            request.setValue(anisette.userAgent, forHTTPHeaderField: "User-Agent")
+        }
+        request.setValue(anisette.clientInfo, forHTTPHeaderField: Constants.AnisetteHeaders.mmeClientInfo)
+        request.setValue(encodedIdentity, forHTTPHeaderField: "X-Apple-Identity-Token")
+        request.setValue("com.apple.gs.xcode.auth", forHTTPHeaderField: "X-Apple-App-Info")
+        request.setValue("27.0 (27A5218g)", forHTTPHeaderField: "X-Xcode-Version")
+        request.setValue(dsid, forHTTPHeaderField: "X-Apple-I-DSID")
+        request.setValue("close", forHTTPHeaderField: "Connection")
+
+        request.setValue(anisette.oneTimePassword, forHTTPHeaderField: "X-Apple-I-MD")
+        request.setValue(anisette.machineID, forHTTPHeaderField: "X-Apple-I-MD-M")
+        request.setValue(anisette.localUserID, forHTTPHeaderField: "X-Apple-I-MD-LU")
+        request.setValue(anisette.routingInfo, forHTTPHeaderField: "X-Apple-I-MD-RINFO")
+        request.setValue(anisette.deviceID, forHTTPHeaderField: "X-Mme-Device-Id")
+        request.setValue(anisette.clientTime, forHTTPHeaderField: "X-Apple-I-Client-Time")
+        request.setValue(anisette.timeZone, forHTTPHeaderField: "X-Apple-I-TimeZone")
+        request.setValue(anisette.serialNumber, forHTTPHeaderField: "X-Apple-I-SRL-NO")
+        request.setValue(anisette.locale, forHTTPHeaderField: "X-Apple-Locale")
+
+        let (_, response) = try await urlSession.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AppleAuthError.badServerResponse("No HTTP response received from trusteddevice.")
+        }
+
+        // GrandSlam returns HTTP 200 or 412 when the push notification is successfully dispatched
+        guard httpResponse.statusCode == 200 || httpResponse.statusCode == 412 else {
+            throw AppleAuthError.badServerResponse("Unexpected response HTTP \(httpResponse.statusCode) when triggering 2FA push.")
+        }
+    }
+
     /// Validates 6-digit 2FA OTP code against /grandslam/GsService2/validate.
     public func validate2FACode(
         code: String,
